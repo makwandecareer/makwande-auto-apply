@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
+
 import requests
-from bs4 import BeautifulSoup
 
-from app.core.utils import clean_text
+# If your utils has clean_text, we'll use it; otherwise fallback safely.
+try:
+    from app.core.utils import clean_text  # type: ignore
+except Exception:
+    def clean_text(s: str) -> str:
+        return " ".join((s or "").split())
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/122.0 Safari/537.36"
-}
 
 @dataclass
 class Job:
@@ -20,76 +21,75 @@ class Job:
     location: str
     url: str
     source: str
+    description: str = ""
 
-def fetch_jobs_remotive(query: str = "engineer", limit: int = 50) -> List[Job]:
-    """Remotive public JSON API."""
-    api = f"https://remotive.com/api/remote-jobs?search={query}"
-    r = requests.get(api, headers=HEADERS, timeout=30)
+
+ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID", "")
+ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY", "")
+ADZUNA_COUNTRY = os.getenv("ADZUNA_COUNTRY", "za")  # optional
+
+
+def fetch_jobs_adzuna(query: str, limit: int = 50) -> List[Job]:
+    """
+    Cloud-safe job fetching via Adzuna API.
+    Uses ZA by default (ADZUNA_COUNTRY=za). Works well on Render.
+    """
+    if not ADZUNA_APP_ID or not ADZUNA_APP_KEY:
+        return []
+
+    # Adzuna caps results_per_page; keep within sane bounds.
+    limit = max(1, min(int(limit), 50))
+
+    url = f"https://api.adzuna.com/v1/api/jobs/{ADZUNA_COUNTRY}/search/1"
+    params = {
+        "app_id": ADZUNA_APP_ID,
+        "app_key": ADZUNA_APP_KEY,
+        "results_per_page": limit,
+        "what": query,
+        "content-type": "application/json",
+    }
+
+    r = requests.get(url, params=params, timeout=30)
     r.raise_for_status()
+
     data = r.json()
-    jobs: List[Job] = []
-    for item in data.get("jobs", [])[:limit]:
-        jobs.append(
-            Job(
-                title=clean_text(item.get("title", "")),
-                company=clean_text(item.get("company_name", "")),
-                location=clean_text(item.get("candidate_required_location", "Remote")),
-                url=item.get("url", ""),
-                source="remotive",
-            )
-        )
-    return jobs
+    out: List[Job] = []
 
-def fetch_jobs_weworkremotely(query: str = "engineer", limit: int = 50) -> List[Job]:
-    """Light scrape. If selectors change, update them."""
-    url = f"https://weworkremotely.com/remote-jobs/search?term={query}"
-    r = requests.get(url, headers=HEADERS, timeout=30)
-    r.raise_for_status()
+    for item in data.get("results", []) or []:
+        title = clean_text(item.get("title", ""))
+        company = clean_text((item.get("company") or {}).get("display_name", ""))
+        location = clean_text((item.get("location") or {}).get("display_name", ""))
+        link = item.get("redirect_url", "") or item.get("adref", "")
+        desc = clean_text(item.get("description", "") or "")
 
-    soup = BeautifulSoup(r.text, "html.parser")
-    jobs: List[Job] = []
-
-    for li in soup.select("section.jobs li")[:limit]:
-        a = li.select_one("a")
-        if not a or not a.get("href"):
+        if not title or not link:
             continue
 
-        title_el = li.select_one("span.title")
-        company_el = li.select_one("span.company")
-        region_el = li.select_one("span.region")
-
-        title = clean_text(title_el.get_text()) if title_el else ""
-        company = clean_text(company_el.get_text()) if company_el else ""
-        location = clean_text(region_el.get_text()) if region_el else "Remote"
-
-        if not title or title.lower() == "view all":
-            continue
-
-        jobs.append(
+        out.append(
             Job(
                 title=title,
-                company=company,
-                location=location,
-                url="https://weworkremotely.com" + a["href"],
-                source="weworkremotely",
+                company=company or "Unknown",
+                location=location or "Unknown",
+                url=link,
+                source="adzuna",
+                description=desc,
             )
         )
 
-    return jobs
+    return out
 
-def fetch_all(query: str, limit: int):
-    jobs = []
-    errors = []
+
+def fetch_all(query: str, limit: int = 50) -> Tuple[List[Job], List[str]]:
+    """
+    Returns (jobs, errors). Keep this signature stable for app.main.
+    """
+    errors: List[str] = []
+    jobs: List[Job] = []
 
     try:
-        jobs += fetch_jobs_remotive(query=query, limit=limit)
+        jobs.extend(fetch_jobs_adzuna(query=query, limit=limit))
     except Exception as e:
-        errors.append(f"remotive failed: {e}")
-
-    try:
-        jobs += fetch_jobs_weworkremotely(query=query, limit=limit)
-    except Exception as e:
-        errors.append(f"weworkremotely failed: {e}")
+        errors.append(f"adzuna failed: {e}")
 
     return jobs, errors
 

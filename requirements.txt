@@ -1,5 +1,4 @@
 fastapi
-uvicorn
 jinja2
 python-multipart
 pandas
@@ -9,4 +8,7 @@ python-dateutil
 pydantic
 pypdf
 python-docx
-openai
+openai>=1.0.0
+uvicorn[standard]
+openai>=1.0.0
+
