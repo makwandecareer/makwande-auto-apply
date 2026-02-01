@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+pandas
+requests
+beautifulsoup4
+python-dateutil
+pydantic
+pypdf
+python-docx
+openai

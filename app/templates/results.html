@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Results - {{ app_name }}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+      th { background: #f6f6f6; }
+      a { word-break: break-word; }
+      .top { display:flex; justify-content: space-between; align-items:center; gap: 12px; flex-wrap:wrap; }
+      .btn { padding: 10px 12px; border:1px solid #ccc; border-radius:10px; text-decoration:none; }
+      .badge { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size: 12px; }
+      .muted { color:#666; }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <div>
+        <h2>{{ app_name }} – Results</h2>
+        <div class="muted">Query: <b>{{ query }}</b> • CV type: <b>{{ cv_type }}</b> • Total jobs: <b>{{ total }}</b></div>
+      </div>
+      <div>
+        <a class="btn" href="/">New search</a>
+        <a class="btn" href="/download/{{ file_id }}">Download CSV</a>
+      </div>
+    </div>
+
+    <p class="muted">Tip: Start with match_score ≥ 10, then refine the CV keywords or search query.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Score</th>
+          <th>Role</th>
+          <th>Company</th>
+          <th>Location</th>
+          <th>Source</th>
+          <th>Keywords</th>
+          <th>Link</th>
+          <th>Cover Letter</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td><span class="badge">{{ row.match_score }}</span></td>
+          <td>{{ row.title }}</td>
+          <td>{{ row.company }}</td>
+          <td>{{ row.location }}</td>
+          <td>{{ row.source }}</td>
+          <td class="muted">{{ row.overlap_keywords }}</td>
+          <td><a href="{{ row.url }}" target="_blank">Open</a></td>
+          <td>
+            <form action="/cover-letter" method="post">
+              <input type="hidden" name="file_id" value="{{ file_id }}"/>
+              <input type="hidden" name="row_index" value="{{ loop.index0 }}"/>
+              <button type="submit">Draft</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p class="muted">
+      If "Draft" errors, it means OPENAI_API_KEY is not set in .env — the rest of the system still works.
+    </p>
+  </body>
+</html>
