@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Makwande Auto-Apply System (MVP)
 
 This is a **safe, legal-first MVP** for Makwande Careers:

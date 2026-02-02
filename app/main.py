@@ -113,3 +113,6 @@ def on_startup():
     logger.info(f"Debug: {DEBUG}")
     logger.info(f"DB configured: {bool(os.getenv('DATABASE_URL'))}")
     logger.info("====================================")
+from app.db.session import Base, engine
+
+Base.metadata.create_all(bind=engine)
