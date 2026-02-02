@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Makwande Auto-Apply System (MVP)
 
 This is a **safe, legal-first MVP** for Makwande Careers:
@@ -51,3 +52,18 @@ python scripts/cli.py --query "chemical engineer" --cv data/sample_cv.txt --out 
 - Employer dashboard + candidate database
 - "Assisted apply" via email templates / ATS integrations
 - Payments + user accounts
+=======
+# Makwande Careers – LiveCareer Level System
+
+Features:
+- User Auth
+- CV Builder
+- Job Aggregation
+- AI Cover Letters
+- ATS Matching
+- Subscription Ready
+
+Run:
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+>>>>>>> fdbc3e6 (Fix database connection for Render PostgreSQL)

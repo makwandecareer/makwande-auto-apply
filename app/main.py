@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from __future__ import annotations
 
 import os
@@ -271,3 +272,19 @@ def debug_sources(q: str = "engineer", limit: int = 20):
         },
     }
 
+=======
+from fastapi import FastAPI
+from app.routes import auth, users, jobs, cv, billing
+
+app = FastAPI(title="Makwande Careers Pro")
+
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(jobs.router)
+app.include_router(cv.router)
+app.include_router(billing.router)
+
+@app.get("/healthz")
+def health():
+    return {"ok": True, "service": "makwande-livecareer"}
+>>>>>>> fdbc3e6 (Fix database connection for Render PostgreSQL)
