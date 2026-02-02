@@ -2,30 +2,15 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-def _normalize_db_url(url: str) -> str:
-    """
-    Render often gives DATABASE_URL as:
-      postgres://user:pass@host:5432/db
-    SQLAlchemy + psycopg wants:
-      postgresql+psycopg://user:pass@host:5432/db
-    """
-    if not url:
-        return ""
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+psycopg://", 1)
-
-    # If someone already provided postgresql://, upgrade to psycopg driver explicitly
-    if url.startswith("postgresql://") and "+psycopg" not in url:
-        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
-
-    return url
-
-
-DATABASE_URL = _normalize_db_url(os.getenv("DATABASE_URL") or os.getenv("INTERNAL_DATABASE_URL") or "")
-
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set. Add it in Render Environment Variables.")
+# Render sometimes provides postgres:// or postgresql://
+# For psycopg v3 + SQLAlchemy, we should use: postgresql+psycopg://
+if DATABASE_URL:
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+    elif DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 engine = create_engine(
     DATABASE_URL,
@@ -34,7 +19,7 @@ engine = create_engine(
     max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
 )
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
@@ -44,3 +29,4 @@ def get_db():
         yield db
     finally:
         db.close()
+

@@ -1,194 +1,115 @@
 import os
 import logging
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.db.session import Base, engine
+from fastapi.staticfiles import StaticFiles
 
-Base.metadata.create_all(bind=engine)
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from fastapi import Depends
 
-# ---------------------------------------------------
-# CONFIG
-# ---------------------------------------------------
+# DB dependency
+from app.db.session import get_db
 
-APP_NAME = "Makwande Auto Apply"
-ENV = os.getenv("ENV", "production")
-DEBUG = os.getenv("DEBUG", "false").lower() == "true"
-
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-
-ADZUNA_ID = os.getenv("ADZUNA_APP_ID")
-ADZUNA_KEY = os.getenv("ADZUNA_APP_KEY")
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-
-# ---------------------------------------------------
-# LOGGING
-# ---------------------------------------------------
-
+# -------------------------------------------------------
+# Logging
+# -------------------------------------------------------
+APP_NAME = "makwande-auto-apply"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
+logger = logging.getLogger(APP_NAME)
 
-logger = logging.getLogger("makwande-auto-apply")
-
-
-# ---------------------------------------------------
-# APP INIT
-# ---------------------------------------------------
+# -------------------------------------------------------
+# App
+# -------------------------------------------------------
+ENV = os.getenv("ENV", "production")
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 app = FastAPI(
-    title=APP_NAME,
+    title="Makwande Auto Apply",
     version="1.0.0",
-    debug=DEBUG
+    debug=DEBUG,
 )
 
-
-# ---------------------------------------------------
-# CORS (Frontend / Mobile ready)
-# ---------------------------------------------------
+# -------------------------------------------------------
+# CORS (adjust origins later)
+# -------------------------------------------------------
+origins = os.getenv("CORS_ORIGINS", "*").split(",") if os.getenv("CORS_ORIGINS") else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change later for security
+    allow_origins=origins if origins != ["*"] else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# -------------------------------------------------------
+# Static
+# -------------------------------------------------------
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    logger.info(f"Static mounted: {STATIC_DIR}")
+else:
+    logger.warning(f"Static directory not found: {STATIC_DIR}")
 
-# ---------------------------------------------------
-# STATIC FILES
-# ---------------------------------------------------
-
-STATIC_DIR = os.path.join("app", "static")
-
-if os.path.exists(STATIC_DIR):
-    app.mount(
-        "/static",
-        StaticFiles(directory=STATIC_DIR),
-        name="static"
-    )
-    logger.info(f"Static mounted: {os.path.abspath(STATIC_DIR)}")
-
-
-# ---------------------------------------------------
-# SAFE ROUTER LOADER
-# ---------------------------------------------------
-
-def safe_import(module_name: str, router_name="router"):
+# -------------------------------------------------------
+# Safe router loader
+# -------------------------------------------------------
+def safe_include(router_path: str, prefix: str = "", tags=None):
     """
-    Import routers safely (won't crash app)
+    Import and include a router without breaking the whole app if import fails.
     """
     try:
-        module = __import__(module_name, fromlist=[router_name])
-        router = getattr(module, router_name)
-        app.include_router(router)
-
-        logger.info(f"Router mounted: {module_name}")
-
+        module = __import__(router_path, fromlist=["router"])
+        router = getattr(module, "router")
+        app.include_router(router, prefix=prefix, tags=tags or [])
+        logger.info(f"Router mounted: {router_path} ({prefix or '/'})")
     except Exception as e:
-        logger.warning(f"Could not import {module_name}: {e}")
+        logger.warning(f"Could not import {router_path}: {e}")
 
+# These are your routers (keep same structure)
+safe_include("app.routes.auth", prefix="", tags=["Auth"])
+safe_include("app.routes.users", prefix="/api", tags=["users"])
+safe_include("app.routes.jobs", prefix="", tags=["Jobs"])
+safe_include("app.routes.cv", prefix="", tags=["CV"])
+safe_include("app.routes.billing", prefix="", tags=["Billing"])
 
-# ---------------------------------------------------
-# ROUTERS
-# ---------------------------------------------------
-
-ROUTERS = [
-    "app.routes.auth",
-    "app.routes.users",
-    "app.routes.jobs",
-    "app.routes.cv",
-    "app.routes.billing",
-]
-
-for router in ROUTERS:
-    safe_import(router)
-
-
-# ---------------------------------------------------
-# ROOT
-# ---------------------------------------------------
-
+# -------------------------------------------------------
+# Base endpoints
+# -------------------------------------------------------
 @app.get("/")
 def home():
     return {
         "message": "Makwande Auto Apply API is running ✅",
+        "docs": "/docs",
         "health": "/health",
-        "version": "1.0.0"
+        "db_check": "/db-check",
     }
-
-
-# ---------------------------------------------------
-# HEALTH CHECK (Render)
-# ---------------------------------------------------
 
 @app.get("/health")
-def health_check():
-    return {
-        "status": "ok",
-        "env": ENV,
-        "db": bool(DATABASE_URL),
-        "openai": bool(OPENAI_KEY),
-        "adzuna": bool(ADZUNA_ID and ADZUNA_KEY)
-    }
+def health():
+    return {"status": "ok", "env": ENV, "debug": DEBUG}
 
-
-# ---------------------------------------------------
-# STARTUP EVENT
-# ---------------------------------------------------
-
+@app.get("/db-check")
+def db_check(db: Session = Depends(get_db)):
+    """
+    Confirms DB is reachable. If this fails, auth/register/login will fail too.
+    """
+    db.execute(text("SELECT 1"))
+    return {"db": "ok"}
+    
+# -------------------------------------------------------
+# Startup log
+# -------------------------------------------------------
 @app.on_event("startup")
-async def startup():
-
+def on_startup():
     logger.info("====================================")
-    logger.info(f"Starting {APP_NAME}")
+    logger.info("Starting Makwande Auto Apply")
     logger.info(f"Env: {ENV}")
     logger.info(f"Debug: {DEBUG}")
-
-    logger.info(f"OpenAI model: {OPENAI_MODEL}")
-    logger.info(f"OpenAI key set: {bool(OPENAI_KEY)}")
-
-    logger.info(f"Adzuna set: {bool(ADZUNA_ID)}")
-    logger.info(f"DB configured: {bool(DATABASE_URL)}")
-
+    logger.info(f"DB configured: {bool(os.getenv('DATABASE_URL'))}")
     logger.info("====================================")
-
-
-# ---------------------------------------------------
-# GLOBAL ERROR HANDLER
-# ---------------------------------------------------
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-
-    logger.error(f"Unhandled error: {exc}")
-
-    return JSONResponse(
-        status_code=500,
-        content={
-            "success": False,
-            "error": "Internal server error",
-        },
-    )
-
-
-# ---------------------------------------------------
-# DEV MODE
-# ---------------------------------------------------
-
-if __name__ == "__main__":
-
-    import uvicorn
-
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", 8000)),
-        reload=True
-    )
