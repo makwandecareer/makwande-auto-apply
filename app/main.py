@@ -1,290 +1,212 @@
-<<<<<<< HEAD
-from __future__ import annotations
-
 import os
-import uuid
-from pathlib import Path
-from typing import Any, Dict, List
+import sys
+import logging
+from typing import Optional, Dict, Any
 
-import pandas as pd
-from fastapi import FastAPI, Request, UploadFile, Form
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, PlainTextResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from app.core.config import settings
-from app.services.cv_parse import parse_cv
-from app.services.job_sources import fetch_all
-from app.services.matching import match_jobs
-from app.services.cover_letter import can_generate, generate_cover_letter
-
-# ---------------------------------------------------------
-# Paths / storage
-# ---------------------------------------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-UPLOAD_DIR = DATA_DIR / "uploads"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-# Templates
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-
-# In-memory CV store (MVP)
-CV_STORE: dict[str, str] = {}
-
-# ---------------------------------------------------------
-# App
-# ---------------------------------------------------------
-app = FastAPI(title=getattr(settings, "app_name", "Auto Apply"))
+# --- Logging ---
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
+logger = logging.getLogger("makwande-auto-apply")
 
 
-# ---------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------
-def _safe_get(row: Dict[str, Any], *keys: str, default: str = "") -> str:
-    for k in keys:
-        v = row.get(k)
-        if v is not None and str(v).strip():
-            return str(v).strip()
-    return default
+# --- Helpers ---
+def env_bool(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "y", "on")
 
 
-def _df_to_rows(df: pd.DataFrame, max_rows: int = 100) -> List[dict]:
-    if df is None or df.empty:
-        return []
-    df = df.copy()
-
-    # Ensure common columns exist (so templates don’t break)
-    for col in ["title", "company", "location", "url", "source", "score"]:
-        if col not in df.columns:
-            df[col] = ""
-
-    return df.head(max_rows).to_dict(orient="records")
+def env_str(name: str, default: str = "") -> str:
+    return (os.getenv(name) or default).strip()
 
 
-def _counts_by_source(jobs: List[Any]) -> Dict[str, int]:
-    counts: Dict[str, int] = {}
-    for j in jobs:
-        src = getattr(j, "source", "") or ""
-        counts[src] = counts.get(src, 0) + 1
-    return counts
+def safe_import(module_path: str):
+    """
+    Import a module safely. If it fails, log and return None.
+    """
+    try:
+        __import__(module_path)
+        return sys.modules[module_path]
+    except Exception as e:
+        logger.warning("Could not import %s: %s", module_path, e)
+        return None
 
 
-# ---------------------------------------------------------
-# Health & homepage
-# ---------------------------------------------------------
-@app.get("/health", response_class=JSONResponse)
-def health():
+# --- Config ---
+APP_ENV = env_str("APP_ENV", "production")
+DEBUG = env_bool("DEBUG", False)
+
+# Render sets PORT automatically
+PORT = int(os.getenv("PORT", "8000"))
+
+# DB
+DATABASE_URL = env_str("DATABASE_URL", env_str("DATABASE_URL", env_str("DB_URL", env_str("DATABASE", ""))))
+# your code uses DATABASE_URL env var in session.py — keep it consistent:
+# In Render, create env var: DATABASE_URL = <Render PostgreSQL External URL> (or internal if same Render network)
+
+AUTO_CREATE_TABLES = env_bool("AUTO_CREATE_TABLES", True)
+
+# OpenAI
+OPENAI_API_KEY = env_str("OPENAI_API_KEY", env_str("OPENAI_KEY", ""))
+OPENAI_MODEL = env_str("OPENAI_MODEL", "gpt-4.1-mini")  # safe default
+
+# Adzuna
+ADZUNA_APP_ID = env_str("ADZUNA_APP_ID", "")
+ADZUNA_APP_KEY = env_str("ADZUNA_APP_KEY", "")
+
+# Multi-source toggles
+ENABLE_ADZUNA = env_bool("ENABLE_ADZUNA", True)
+ENABLE_REMOTIVE = env_bool("ENABLE_REMOTIVE", True)
+ENABLE_GREENHOUSE = env_bool("ENABLE_GREENHOUSE", True)
+ENABLE_LEVER = env_bool("ENABLE_LEVER", True)
+
+# CORS for frontend deployments
+CORS_ORIGINS = env_str("CORS_ORIGINS", "*")  # set to your domains later: https://makwandecareer.co.za,https://xxx.vercel.app
+ALLOW_ORIGINS = [o.strip() for o in CORS_ORIGINS.split(",")] if CORS_ORIGINS else ["*"]
+
+# --- FastAPI App ---
+app = FastAPI(
+    title="Makwande Auto Apply",
+    version="2.0.0",
+    debug=DEBUG,
+)
+
+# --- CORS ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOW_ORIGINS if ALLOW_ORIGINS else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Static files (optional) ---
+BASE_DIR = os.path.dirname(__file__)
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    logger.info("Static mounted: %s", STATIC_DIR)
+
+# --- Global exception handler ---
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error on %s %s", request.method, request.url)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "error": str(exc) if DEBUG else "server_error"},
+    )
+
+
+# --- Health checks (Render uses /healthz) ---
+@app.get("/healthz")
+def healthz() -> Dict[str, Any]:
+    """
+    Render Health Check endpoint
+    """
     return {
         "status": "ok",
-        "app": getattr(settings, "app_name", "Auto Apply"),
+        "env": APP_ENV,
+        "db_configured": bool(DATABASE_URL),
+        "openai_configured": bool(OPENAI_API_KEY),
+        "sources": {
+            "adzuna": ENABLE_ADZUNA,
+            "remotive": ENABLE_REMOTIVE,
+            "greenhouse": ENABLE_GREENHOUSE,
+            "lever": ENABLE_LEVER,
+        },
     }
 
 
-@app.head("/", response_class=PlainTextResponse)
-def head_root():
-    # Render sometimes sends HEAD /; return 200 OK
-    return PlainTextResponse("OK", status_code=200)
+@app.get("/")
+def root():
+    # Optional: redirect to a UI page if you have it
+    return RedirectResponse(url="/healthz")
 
 
-@app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "app_name": getattr(settings, "app_name", "Auto Apply"),
-            "ai_enabled": can_generate(),
-        },
-    )
+# --- Startup: DB check + optional auto-create tables ---
+@app.on_event("startup")
+def on_startup():
+    logger.info("Starting Makwande Auto Apply (env=%s, debug=%s)", APP_ENV, DEBUG)
+
+    # Log only SAFE info (no secrets)
+    logger.info("OpenAI model: %s | OpenAI key set: %s", OPENAI_MODEL, bool(OPENAI_API_KEY))
+    logger.info("Adzuna set: %s", bool(ADZUNA_APP_ID and ADZUNA_APP_KEY))
+    logger.info("DB configured: %s", bool(DATABASE_URL))
+
+    # DB connectivity check (only if sqlalchemy exists and DATABASE_URL exists)
+    if DATABASE_URL:
+        try:
+            session_mod = safe_import("app.db.session")
+            if session_mod and hasattr(session_mod, "engine"):
+                # ping DB
+                with session_mod.engine.connect() as conn:
+                    conn.execute("SELECT 1")
+                logger.info("DB connection OK ✅")
+
+            # Auto-create tables if models/base exist
+            if AUTO_CREATE_TABLES:
+                models_mod = safe_import("app.models.user")
+                if session_mod and hasattr(session_mod, "Base"):
+                    session_mod.Base.metadata.create_all(bind=session_mod.engine)
+                    logger.info("DB tables ensured ✅ (AUTO_CREATE_TABLES=%s)", AUTO_CREATE_TABLES)
+
+        except Exception as e:
+            logger.error("DB startup check failed ❌: %s", e)
+    else:
+        logger.warning("DATABASE_URL not set — running without DB (auth/users may fail).")
 
 
-# ---------------------------------------------------------
-# Search + Match
-# ---------------------------------------------------------
-@app.post("/search", response_class=HTMLResponse)
-async def search(
-    request: Request,
-    cv_file: UploadFile,
-    query: str = Form("engineer"),
-    limit: int = Form(50),
-):
-    # Save uploaded CV
-    file_id = uuid.uuid4().hex
-    suffix = Path(cv_file.filename or "").suffix.lower() or ".txt"
-    file_path = UPLOAD_DIR / f"{file_id}{suffix}"
-
-    content = await cv_file.read()
-    file_path.write_bytes(content)
-
-    # Parse CV
-    cv_text, cv_type = parse_cv(file_path)
-    CV_STORE[file_id] = cv_text
-
-    # Fetch multi-source jobs
-    jobs, errors = fetch_all(query=query, limit=int(limit))
-    counts = _counts_by_source(jobs)
-
-    # Match + score
-    df = match_jobs(cv_text, jobs)
-
-    # Save CSV (for download & revisits)
-    csv_path = DATA_DIR / f"{file_id}_jobs_scored.csv"
-    df.to_csv(csv_path, index=False)
-
-    rows = _df_to_rows(df, max_rows=100)
-
-    return templates.TemplateResponse(
-        "results.html",
-        {
-            "request": request,
-            "app_name": getattr(settings, "app_name", "Auto Apply"),
-            "query": query,
-            "cv_type": cv_type,
-            "total": int(len(df)) if df is not None else 0,
-            "rows": rows,
-            "file_id": file_id,
-            "ai_enabled": can_generate(),
-            "source_counts": counts,
-            "source_errors": errors,
-        },
-    )
+# --- Routes (safe import) ---
+def include_router_safe(module_path: str, attr: str = "router", prefix: str = "", tags: Optional[list] = None):
+    mod = safe_import(module_path)
+    if not mod:
+        return
+    router = getattr(mod, attr, None)
+    if router is None:
+        logger.warning("%s has no '%s'", module_path, attr)
+        return
+    app.include_router(router, prefix=prefix, tags=tags or [])
+    logger.info("Router mounted: %s (%s)", module_path, prefix)
 
 
-# ---------------------------------------------------------
-# View previous results
-# ---------------------------------------------------------
-@app.get("/results/{file_id}", response_class=HTMLResponse)
-def results(request: Request, file_id: str):
-    csv_path = DATA_DIR / f"{file_id}_jobs_scored.csv"
-    if not csv_path.exists():
-        return HTMLResponse("Results not found.", status_code=404)
-
-    df = pd.read_csv(csv_path)
-    rows = _df_to_rows(df, max_rows=100)
-
-    return templates.TemplateResponse(
-        "results.html",
-        {
-            "request": request,
-            "app_name": getattr(settings, "app_name", "Auto Apply"),
-            "query": "previous",
-            "cv_type": "stored",
-            "total": int(len(df)),
-            "rows": rows,
-            "file_id": file_id,
-            "ai_enabled": can_generate(),
-            "source_counts": {},
-            "source_errors": [],
-        },
-    )
+include_router_safe("app.routes.auth", prefix="/api/auth", tags=["auth"])
+include_router_safe("app.routes.users", prefix="/api/users", tags=["users"])
+include_router_safe("app.routes.jobs", prefix="/api/jobs", tags=["jobs"])
+include_router_safe("app.routes.cv", prefix="/api/cv", tags=["cv"])
+include_router_safe("app.routes.billing", prefix="/api/billing", tags=["billing"])
 
 
-# ---------------------------------------------------------
-# Download CSV
-# ---------------------------------------------------------
-@app.get("/download/{file_id}")
-def download(file_id: str):
-    csv_path = DATA_DIR / f"{file_id}_jobs_scored.csv"
-    if not csv_path.exists():
-        return HTMLResponse("CSV not found.", status_code=404)
-
-    return FileResponse(
-        path=str(csv_path),
-        filename="jobs_scored.csv",
-        media_type="text/csv",
-    )
-
-
-# ---------------------------------------------------------
-# OpenAI cover letter
-# ---------------------------------------------------------
-@app.post("/cover-letter", response_class=HTMLResponse)
-def cover_letter(
-    request: Request,
-    file_id: str = Form(...),
-    row_index: int = Form(...),
-):
-    csv_path = DATA_DIR / f"{file_id}_jobs_scored.csv"
-    if not csv_path.exists():
-        return HTMLResponse("Results not found.", status_code=404)
-
-    if not can_generate():
-        return HTMLResponse("OPENAI_API_KEY not set. AI drafting disabled.", status_code=400)
-
-    df = pd.read_csv(csv_path)
-    if row_index < 0 or row_index >= len(df):
-        return HTMLResponse("Invalid job row.", status_code=400)
-
-    job_row = df.iloc[int(row_index)].to_dict()
-    cv_text = CV_STORE.get(file_id, "")
-
-    job_title = _safe_get(job_row, "title", "job_title", default="Job Role")
-    company = _safe_get(job_row, "company", "company_name", default="Company")
-    location = _safe_get(job_row, "location", "city", "region", default="Location")
-    job_url = _safe_get(job_row, "url", "link", "apply_url", default="")
-    description = _safe_get(job_row, "description", "job_description", default="")
-
-    try:
-        letter = generate_cover_letter(
-            cv_text=cv_text,
-            job_title=job_title,
-            company=company,
-            location=location,
-            job_url=job_url,
-            extra={"job_description": description},
-        )
-    except Exception as e:
-        return HTMLResponse(f"Cover letter error: {e}", status_code=500)
-
-    return templates.TemplateResponse(
-        "cover_letter.html",
-        {
-            "request": request,
-            "app_name": getattr(settings, "app_name", "Auto Apply"),
-            "job": job_row,
-            "letter": letter,
-            "file_id": file_id,
-        },
-    )
-
-
-# ---------------------------------------------------------
-# Debug endpoint: see exactly what sources return
-# ---------------------------------------------------------
-@app.get("/debug/sources", response_class=JSONResponse)
-def debug_sources(q: str = "engineer", limit: int = 20):
-    jobs, errors = fetch_all(q, int(limit))
+# --- Debug endpoint to verify env (SAFE, no keys printed) ---
+@app.get("/api/debug/config")
+def debug_config() -> Dict[str, Any]:
+    """
+    Useful to confirm Render env variables are loaded.
+    Never prints secrets.
+    """
     return {
-        "query": q,
-        "limit": int(limit),
-        "total_jobs": len(jobs),
-        "counts_by_source": _counts_by_source(jobs),
-        "errors": errors,
-        "env": {
-            "ADZUNA_APP_ID_set": bool(os.getenv("ADZUNA_APP_ID")),
-            "ADZUNA_APP_KEY_set": bool(os.getenv("ADZUNA_APP_KEY")),
-            "ADZUNA_COUNTRY": os.getenv("ADZUNA_COUNTRY", ""),
-            "OPENAI_API_KEY_set": bool(os.getenv("OPENAI_API_KEY")),
-            "OPENAI_MODEL": os.getenv("OPENAI_MODEL", ""),
-            "GREENHOUSE_BOARDS": os.getenv("GREENHOUSE_BOARDS", ""),
-            "LEVER_BOARDS": os.getenv("LEVER_BOARDS", ""),
+        "env": APP_ENV,
+        "debug": DEBUG,
+        "db_configured": bool(DATABASE_URL),
+        "openai_configured": bool(OPENAI_API_KEY),
+        "openai_model": OPENAI_MODEL,
+        "adzuna_configured": bool(ADZUNA_APP_ID and ADZUNA_APP_KEY),
+        "sources": {
+            "ENABLE_ADZUNA": ENABLE_ADZUNA,
+            "ENABLE_REMOTIVE": ENABLE_REMOTIVE,
+            "ENABLE_GREENHOUSE": ENABLE_GREENHOUSE,
+            "ENABLE_LEVER": ENABLE_LEVER,
         },
+        "cors_origins": ALLOW_ORIGINS,
     }
 
-=======
-from fastapi import FastAPI
-from app.routes import auth, users, jobs, cv, billing
-
-app = FastAPI(title="Makwande Careers Pro")
-
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(jobs.router)
-app.include_router(cv.router)
-app.include_router(billing.router)
-
-@app.get("/healthz")
-def health():
-    return {"ok": True, "service": "makwande-livecareer"}
->>>>>>> fdbc3e6 (Fix database connection for Render PostgreSQL)
