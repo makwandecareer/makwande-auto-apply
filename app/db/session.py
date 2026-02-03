@@ -1,37 +1,35 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+import psycopg
+from psycopg.rows import dict_row
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+def _normalize_db_url(url: str) -> str:
+    # Render often gives postgres://... which psycopg understands, but normalize anyway
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql://", 1)
+    return url
 
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL is not set")
+def get_conn():
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise RuntimeError("DATABASE_URL is not set")
 
-# Force psycopg3
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+    db_url = _normalize_db_url(db_url)
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10
-)
+    # autocommit=False so we control commits
+    return psycopg.connect(db_url, row_factory=dict_row)
 
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine
-)
-
-Base = declarative_base()
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
+def init_db():
+    # Create tables if not exist
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            """)
+        conn.commit()
