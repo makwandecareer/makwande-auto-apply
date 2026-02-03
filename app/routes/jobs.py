@@ -12,7 +12,7 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 # Simple in-memory cache
 # -----------------------------
 _CACHE: Dict[str, Dict[str, Any]] = {}
-CACHE_TTL_SECONDS = int(os.getenv("JOBS_CACHE_TTL", "120"))  # 2 min default
+CACHE_TTL_SECONDS = int(os.getenv("JOBS_CACHE_TTL", "120"))
 
 def _cache_get(key: str):
     item = _CACHE.get(key)
@@ -27,7 +27,7 @@ def _cache_set(key: str, value: Any):
     _CACHE[key] = {"ts": time.time(), "value": value}
 
 # -----------------------------
-# Normalization helpers
+# Helpers
 # -----------------------------
 def _safe_str(x) -> Optional[str]:
     if x is None:
@@ -74,11 +74,10 @@ def _mk_job(
     }
 
 def _dedupe(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    # unique by source+id OR apply_url if present
     seen = set()
     out = []
     for j in jobs:
-        k = f'{j.get("source")}::{j.get("id")}::{j.get("apply_url")}'
+        k = (j.get("source"), j.get("id"), j.get("apply_url"))
         if k in seen:
             continue
         seen.add(k)
@@ -86,7 +85,7 @@ def _dedupe(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 # -----------------------------
-# Source: Adzuna
+# Adzuna (great for ZA)
 # -----------------------------
 async def _fetch_adzuna(q: str, country: str, page: int, limit: int) -> List[Dict[str, Any]]:
     app_id = os.getenv("ADZUNA_APP_ID")
@@ -94,10 +93,7 @@ async def _fetch_adzuna(q: str, country: str, page: int, limit: int) -> List[Dic
     if not app_id or not app_key:
         return []
 
-    # Adzuna country codes: za, gb, us, etc.
     country = (country or "za").lower()
-
-    # Adzuna uses 1-based page number
     adz_page = max(1, page)
 
     params = {
@@ -118,6 +114,7 @@ async def _fetch_adzuna(q: str, country: str, page: int, limit: int) -> List[Dic
 
     results = data.get("results", []) or []
     jobs: List[Dict[str, Any]] = []
+
     for it in results:
         title = _safe_str(it.get("title")) or "Untitled"
         company = _safe_str((it.get("company") or {}).get("display_name")) or "Unknown"
@@ -131,7 +128,11 @@ async def _fetch_adzuna(q: str, country: str, page: int, limit: int) -> List[Dic
         salary_max = it.get("salary_max")
         salary_currency = _safe_str(it.get("salary_currency"))
 
-        # Adzuna doesn't consistently tell remote/hybrid
+        tags = []
+        if it.get("category") and isinstance(it["category"], dict):
+            if it["category"].get("label"):
+                tags.append(str(it["category"]["label"]))
+
         jobs.append(
             _mk_job(
                 source="adzuna",
@@ -146,19 +147,18 @@ async def _fetch_adzuna(q: str, country: str, page: int, limit: int) -> List[Dic
                 salary_min=float(salary_min) if salary_min is not None else None,
                 salary_max=float(salary_max) if salary_max is not None else None,
                 salary_currency=salary_currency,
-                description=desc[:2000] if desc else None,
+                description=desc[:2500] if desc else None,
                 apply_url=apply_url,
-                tags=[],
+                tags=tags,
             )
         )
+
     return jobs
 
 # -----------------------------
-# Source: Remotive (Remote jobs)
+# Remotive (remote jobs)
 # -----------------------------
 async def _fetch_remotive(q: str, page: int, limit: int) -> List[Dict[str, Any]]:
-    # Remotive is free and public
-    # API: https://remotive.com/api/remote-jobs?search=python
     params = {"search": q} if q else {}
     url = "https://remotive.com/api/remote-jobs"
     if params:
@@ -171,8 +171,6 @@ async def _fetch_remotive(q: str, page: int, limit: int) -> List[Dict[str, Any]]
         data = r.json()
 
     items = data.get("jobs", []) or []
-
-    # paginate ourselves
     start = max(0, (page - 1) * limit)
     end = start + limit
     items = items[start:end]
@@ -194,14 +192,10 @@ async def _fetch_remotive(q: str, page: int, limit: int) -> List[Dict[str, Any]]
                 title=title,
                 company=company,
                 location=loc,
-                country=None,
                 remote=True,
                 job_type=_safe_str(it.get("job_type")),
                 posted_at=posted,
-                salary_min=None,
-                salary_max=None,
-                salary_currency=None,
-                description=desc[:2000] if desc else None,
+                description=desc[:2500] if desc else None,
                 apply_url=apply_url,
                 tags=it.get("tags") or [],
             )
@@ -209,128 +203,15 @@ async def _fetch_remotive(q: str, page: int, limit: int) -> List[Dict[str, Any]]
     return jobs
 
 # -----------------------------
-# Source: Greenhouse boards
-# -----------------------------
-async def _fetch_greenhouse(q: str, page: int, limit: int) -> List[Dict[str, Any]]:
-    boards_csv = os.getenv("GREENHOUSE_BOARDS", "").strip()
-    if not boards_csv:
-        return []
-
-    boards = [b.strip() for b in boards_csv.split(",") if b.strip()]
-    if not boards:
-        return []
-
-    q_lower = (q or "").lower().strip()
-
-    async with httpx.AsyncClient(timeout=20) as client:
-        all_jobs: List[Dict[str, Any]] = []
-        for board in boards:
-            url = f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true"
-            r = await client.get(url)
-            if r.status_code != 200:
-                continue
-            data = r.json()
-            items = data.get("jobs", []) or []
-            for it in items:
-                title = _safe_str(it.get("title")) or "Untitled"
-                # filter by q
-                if q_lower and q_lower not in title.lower():
-                    continue
-
-                job_id = _safe_str(it.get("id")) or f"gh-{board}-{hash(title)}"
-                loc = _safe_str((it.get("location") or {}).get("name")) or "Unknown"
-                posted = _safe_str(it.get("updated_at")) or _safe_str(it.get("created_at"))
-                apply_url = _safe_str(it.get("absolute_url"))
-                desc = _safe_str(it.get("content"))
-
-                all_jobs.append(
-                    _mk_job(
-                        source="greenhouse",
-                        id=str(job_id),
-                        title=title,
-                        company=board,
-                        location=loc,
-                        country=None,
-                        remote=None,
-                        job_type=None,
-                        posted_at=posted,
-                        description=(desc[:2000] if desc else None),
-                        apply_url=apply_url,
-                        tags=[],
-                    )
-                )
-
-    # paginate ourselves
-    start = max(0, (page - 1) * limit)
-    end = start + limit
-    return all_jobs[start:end]
-
-# -----------------------------
-# Source: Lever companies
-# -----------------------------
-async def _fetch_lever(q: str, page: int, limit: int) -> List[Dict[str, Any]]:
-    companies_csv = os.getenv("LEVER_COMPANIES", "").strip()
-    if not companies_csv:
-        return []
-
-    companies = [c.strip() for c in companies_csv.split(",") if c.strip()]
-    if not companies:
-        return []
-
-    q_lower = (q or "").lower().strip()
-
-    async with httpx.AsyncClient(timeout=20) as client:
-        all_jobs: List[Dict[str, Any]] = []
-        for comp in companies:
-            # Lever postings endpoint
-            url = f"https://api.lever.co/v0/postings/{comp}?mode=json"
-            r = await client.get(url)
-            if r.status_code != 200:
-                continue
-            items = r.json() or []
-            for it in items:
-                title = _safe_str(it.get("text")) or "Untitled"
-                if q_lower and q_lower not in title.lower():
-                    continue
-
-                job_id = _safe_str(it.get("id")) or f"lever-{comp}-{hash(title)}"
-                loc = _safe_str(it.get("categories", {}).get("location")) or "Unknown"
-                apply_url = _safe_str(it.get("hostedUrl")) or _safe_str(it.get("applyUrl"))
-                posted = _safe_str(it.get("createdAt"))
-                desc = _safe_str(it.get("descriptionPlain")) or _safe_str(it.get("description"))
-
-                all_jobs.append(
-                    _mk_job(
-                        source="lever",
-                        id=str(job_id),
-                        title=title,
-                        company=comp,
-                        location=loc,
-                        country=None,
-                        remote=("remote" in loc.lower()) if loc else None,
-                        job_type=_safe_str(it.get("categories", {}).get("commitment")),
-                        posted_at=posted,
-                        description=desc[:2000] if desc else None,
-                        apply_url=apply_url,
-                        tags=[t.get("text") for t in (it.get("tags") or []) if isinstance(t, dict) and t.get("text")],
-                    )
-                )
-
-    # paginate ourselves
-    start = max(0, (page - 1) * limit)
-    end = start + limit
-    return all_jobs[start:end]
-
-# -----------------------------
 # Public endpoint
 # -----------------------------
 @router.get("/search")
 async def search_jobs(
-    q: str = Query(default="", description="Search keywords, e.g. 'chemical engineer'"),
-    country: str = Query(default="za", description="Adzuna country code e.g. za, us, gb"),
+    q: str = Query(default="", description="Search keywords e.g. 'chemical engineer'"),
+    country: str = Query(default="za", description="Adzuna country code e.g. za"),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=50),
-    source: str = Query(default="all", description="all|adzuna|remotive|greenhouse|lever"),
+    source: str = Query(default="all", description="all|adzuna|remotive"),
     remote_only: bool = Query(default=False),
 ):
     cache_key = f"jobs::{q}::{country}::{page}::{limit}::{source}::{remote_only}"
@@ -346,16 +227,11 @@ async def search_jobs(
             jobs.extend(await _fetch_adzuna(q=q, country=country, page=page, limit=limit))
         if src in ("all", "remotive"):
             jobs.extend(await _fetch_remotive(q=q, page=page, limit=limit))
-        if src in ("all", "greenhouse"):
-            jobs.extend(await _fetch_greenhouse(q=q, page=page, limit=limit))
-        if src in ("all", "lever"):
-            jobs.extend(await _fetch_lever(q=q, page=page, limit=limit))
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Jobs provider timeout")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Jobs provider error: {str(e)}")
 
-    # filters
     if remote_only:
         jobs = [j for j in jobs if j.get("remote") is True]
 
