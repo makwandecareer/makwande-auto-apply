@@ -1,84 +1,104 @@
+import json
+import os
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr
+from passlib.context import CryptContext
+import jwt
 
-from app.db.session import get_conn
-from app.core.security import hash_password, verify_password, create_access_token
+router = APIRouter()
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+# Config
+SECRET_KEY = os.getenv("JWT_SECRET", "changeme123")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
-class RegisterIn(BaseModel):
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+USERS_FILE = "app/data/users.json"
+
+
+# Models
+class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
-    full_name: str | None = None
+    password: str
+    full_name: str
 
-class LoginIn(BaseModel):
+
+class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-@router.post("/register")
-def register(data: RegisterIn):
-    email = data.email.lower().strip()
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            # Check existing
-            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
-            exists = cur.fetchone()
-            if exists:
-                raise HTTPException(status_code=409, detail="Email already registered")
+# Helpers
+def load_users():
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
 
-            pw_hash = hash_password(data.password)
 
-            cur.execute(
-                """
-                INSERT INTO users (email, password_hash, full_name)
-                VALUES (%s, %s, %s)
-                RETURNING id, email, full_name, created_at
-                """,
-                (email, pw_hash, data.full_name),
-            )
-            user = cur.fetchone()
-        conn.commit()
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
 
-    token = create_access_token({"sub": str(user["id"]), "email": user["email"]})
-    return {
-        "success": True,
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "full_name": user["full_name"],
-            "created_at": str(user["created_at"]),
-        },
-        "access_token": token,
-        "token_type": "bearer",
+
+def hash_password(password: str):
+    return pwd_context.hash(password)
+
+
+def verify_password(password, hashed):
+    return pwd_context.verify(password, hashed)
+
+
+def create_token(email: str):
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    payload = {
+        "sub": email,
+        "exp": expire
     }
 
-@router.post("/login")
-def login(data: LoginIn):
-    email = data.email.lower().strip()
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, email, password_hash, full_name FROM users WHERE email = %s",
-                (email,),
-            )
-            user = cur.fetchone()
+
+# Routes
+@router.post("/register")
+def register(data: RegisterRequest):
+
+    users = load_users()
+
+    if any(u["email"] == data.email for u in users):
+        raise HTTPException(400, "Email already registered")
+
+    user = {
+        "email": data.email,
+        "password": hash_password(data.password),
+        "full_name": data.full_name,
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    users.append(user)
+    save_users(users)
+
+    return {"message": "Registration successful ✅"}
+
+
+@router.post("/login")
+def login(data: LoginRequest):
+
+    users = load_users()
+
+    user = next((u for u in users if u["email"] == data.email), None)
 
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(401, "Invalid credentials")
 
-    if not verify_password(data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not verify_password(data.password, user["password"]):
+        raise HTTPException(401, "Invalid credentials")
 
-    token = create_access_token({"sub": str(user["id"]), "email": user["email"]})
+    token = create_token(user["email"])
+
     return {
-        "success": True,
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "full_name": user["full_name"],
-        },
         "access_token": token,
-        "token_type": "bearer",
+        "token_type": "bearer"
     }
