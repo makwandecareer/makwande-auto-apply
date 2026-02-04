@@ -68,3 +68,16 @@ def filter_jobs(jobs: List[Job], query: str, limit: int) -> List[Job]:
         if len(out) >= limit:
             break
     return out
+    
+from fastapi import HTTPException
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")  # IMPORTANT
+
+def get_password_hash(password: str) -> str:
+    if not isinstance(password, str):
+        raise HTTPException(status_code=400, detail="Password must be a string")
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
