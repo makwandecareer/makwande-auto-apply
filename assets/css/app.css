@@ -1,0 +1,165 @@
+:root{
+  --bg0:#070A12;
+  --bg1:#0B1020;
+  --card: rgba(255,255,255,.06);
+  --card2: rgba(255,255,255,.045);
+  --border: rgba(255,255,255,.12);
+  --text: rgba(255,255,255,.92);
+  --muted: rgba(255,255,255,.68);
+  --muted2: rgba(255,255,255,.56);
+  --brand1:#2dd4bf;
+  --brand2:#60a5fa;
+  --warn:#fbbf24;
+  --danger:#f87171;
+  --ok:#34d399;
+  --shadow: 0 18px 55px rgba(0,0,0,.45);
+  --shadow2: 0 10px 30px rgba(0,0,0,.35);
+  --radius: 18px;
+  --radius2: 14px;
+  --radius3: 12px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+html,body{height:100%;}
+body{
+  background:
+    radial-gradient(1200px 700px at 10% 10%, rgba(45,212,191,.18), transparent 50%),
+    radial-gradient(900px 500px at 90% 10%, rgba(96,165,250,.18), transparent 55%),
+    radial-gradient(700px 450px at 75% 80%, rgba(45,212,191,.10), transparent 55%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+  color: var(--text);
+  letter-spacing: .1px;
+}
+
+a{color: inherit;}
+.small-muted{color: var(--muted);}
+
+.nav-glass{
+  background: rgba(10, 16, 32, .55);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand-logo{width:28px;height:28px;}
+.navbar .nav-link{ color: rgba(255,255,255,.82) !important; }
+.navbar .nav-link:hover{ color: rgba(255,255,255,.98) !important; }
+
+.hero{ padding: 64px 0 22px 0; }
+
+.hero-card{
+  background: linear-gradient(135deg, rgba(45,212,191,.14), rgba(96,165,250,.10));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  padding: 26px;
+}
+
+.cardx{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow2);
+}
+
+.cardx-sub{
+  background: var(--card2);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: var(--radius2);
+}
+
+.cardx .cardx-body{ padding: 18px; }
+
+.badge-soft{
+  background: rgba(45,212,191,.14);
+  border: 1px solid rgba(45,212,191,.28);
+  color: #b9fff3;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.badge-warn{
+  background: rgba(251,191,36,.14);
+  border: 1px solid rgba(251,191,36,.28);
+  color: #ffe4a3;
+}
+
+.badge-danger{
+  background: rgba(248,113,113,.14);
+  border: 1px solid rgba(248,113,113,.28);
+  color: #ffd0d0;
+}
+
+.btn-brand{
+  background: linear-gradient(135deg, var(--brand1), var(--brand2));
+  border: 0;
+  color: #06101a;
+  font-weight: 800;
+  box-shadow: 0 12px 40px rgba(45,212,191,.18);
+}
+.btn-brand:hover{ filter: brightness(1.06); transform: translateY(-1px); }
+.btn-brand:active{ transform: translateY(0); }
+
+.form-control, .form-select{
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: var(--radius3) !important;
+}
+.form-control::placeholder{ color: rgba(255,255,255,.55); }
+.form-text{ color: var(--muted2) !important; }
+
+hr.soft{ border-top: 1px solid rgba(255,255,255,.10); }
+
+.footer{ padding: 26px 0; color: var(--muted); }
+
+.toastx{
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  background: rgba(16, 24, 44, .92);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  max-width: 380px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: all .25s ease;
+  z-index: 9999;
+}
+.toastx.show{ opacity: 1; transform: translateY(0); }
+.toastx-info{ border-color: rgba(96,165,250,.35); }
+.toastx-ok{ border-color: rgba(45,212,191,.35); }
+.toastx-warn{ border-color: rgba(251,191,36,.35); }
+.toastx-err{ border-color: rgba(248,113,113,.35); }
+
+.kpi{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.04);
+}
+.kpi .v{ font-weight:900; font-size: 22px; }
+
+.skeleton{
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(255,255,255,.06), rgba(255,255,255,.10), rgba(255,255,255,.06));
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  height: 14px;
+}
+@keyframes shimmer{
+  0%{ background-position: 0% 0; }
+  100%{ background-position: -200% 0; }
+}
+
+.mono{ font-family: var(--mono); }
+
+.table-darkish{
+  --bs-table-bg: rgba(255,255,255,.04);
+  --bs-table-striped-bg: rgba(255,255,255,.05);
+  --bs-table-color: rgba(255,255,255,.88);
+  --bs-table-border-color: rgba(255,255,255,.10);
+}
