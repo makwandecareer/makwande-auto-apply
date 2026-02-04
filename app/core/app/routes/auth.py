@@ -1,104 +1,76 @@
-import json
-import os
-from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field
+from fastapi.security import OAuth2PasswordBearer
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
-from passlib.context import CryptContext
-import jwt
+from app.core.db import init_db
+from app.core.users_repo import create_user, get_user_by_email, get_user_by_id
+from app.core.security import verify_password, create_access_token, decode_token
 
-router = APIRouter()
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# Config
-SECRET_KEY = os.getenv("JWT_SECRET", "changeme123")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-USERS_FILE = "app/data/users.json"
+# FastAPI dependency to read "Authorization: Bearer <token>"
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
-# Models
-class RegisterRequest(BaseModel):
+@router.on_event("startup")
+def _startup():
+    # ensure DB tables exist when router loads
+    init_db()
+
+
+class SignupIn(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=120)
     email: EmailStr
-    password: str
-    full_name: str
+    password: str = Field(..., min_length=6, max_length=128)
 
-
-class LoginRequest(BaseModel):
+class LoginIn(BaseModel):
     email: EmailStr
     password: str
 
 
-# Helpers
-def load_users():
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
-
-
-def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
-
-
-def hash_password(password: str):
-    return pwd_context.hash(password)
-
-
-def verify_password(password, hashed):
-    return pwd_context.verify(password, hashed)
-
-
-def create_token(email: str):
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-
-    payload = {
-        "sub": email,
-        "exp": expire
+def user_public(u):
+    return {
+        "id": u["id"],
+        "full_name": u["full_name"],
+        "email": u["email"],
+        "created_at": u["created_at"],
     }
 
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    payload = decode_token(token)
+    sub = payload.get("sub")
+
+    if not sub or not sub.startswith("user:"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    user_id = int(sub.split(":", 1)[1])
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    return user
 
 
-# Routes
-@router.post("/register")
-def register(data: RegisterRequest):
-
-    users = load_users()
-
-    if any(u["email"] == data.email for u in users):
-        raise HTTPException(400, "Email already registered")
-
-    user = {
-        "email": data.email,
-        "password": hash_password(data.password),
-        "full_name": data.full_name,
-        "created_at": datetime.utcnow().isoformat()
-    }
-
-    users.append(user)
-    save_users(users)
-
-    return {"message": "Registration successful ✅"}
+@router.post("/signup")
+def signup(payload: SignupIn):
+    user = create_user(payload.full_name, payload.email, payload.password)
+    token = create_access_token(subject=f"user:{user['id']}")
+    # ✅ frontend expects {token, user}
+    return {"token": token, "user": user_public(user)}
 
 
 @router.post("/login")
-def login(data: LoginRequest):
+def login(payload: LoginIn):
+    user = get_user_by_email(payload.email)
+    if not user or not verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    users = load_users()
+    token = create_access_token(subject=f"user:{user['id']}")
+    # ✅ frontend expects {token, user}
+    return {"token": token, "user": user_public(user)}
 
-    user = next((u for u in users if u["email"] == data.email), None)
 
-    if not user:
-        raise HTTPException(401, "Invalid credentials")
-
-    if not verify_password(data.password, user["password"]):
-        raise HTTPException(401, "Invalid credentials")
-
-    token = create_token(user["email"])
-
-    return {
-        "access_token": token,
-        "token_type": "bearer"
-    }
+@router.get("/me")
+def me(user=Depends(get_current_user)):
+    return {"user": user_public(user)}

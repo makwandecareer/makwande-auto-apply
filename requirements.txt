@@ -18,3 +18,4 @@ lxml
 pyyaml
 email-validator
 pyjwt
+python-jose[cryptography]

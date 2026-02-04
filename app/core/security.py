@@ -1,28 +1,42 @@
 import os
 from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
+
+from jose import jwt, JWTError
 from passlib.context import CryptContext
-from jose import jwt
+from fastapi import HTTPException, status
+
+JWT_SECRET = os.getenv("JWT_SECRET", "CHANGE_ME_TO_A_LONG_RANDOM_SECRET")
+JWT_ALG = os.getenv("JWT_ALG", "HS256")
+JWT_EXPIRES_MIN = int(os.getenv("JWT_EXPIRES_MIN", "43200"))  # 30 days default
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-JWT_SECRET = os.getenv("JWT_SECRET", "")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "43200"))  # 30 days default
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
-def verify_password(password: str, password_hash: str) -> bool:
-    return pwd_context.verify(password, password_hash)
+def verify_password(password: str, hashed: str) -> bool:
+    return pwd_context.verify(password, hashed)
 
-def create_access_token(payload: dict) -> str:
-    if not JWT_SECRET:
-        raise RuntimeError("JWT_SECRET is not set")
-    exp = datetime.utcnow() + timedelta(minutes=JWT_EXPIRE_MINUTES)
-    data = {**payload, "exp": exp}
-    return jwt.encode(data, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-def decode_token(token: str) -> dict:
-    if not JWT_SECRET:
-        raise RuntimeError("JWT_SECRET is not set")
-    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+def create_access_token(subject: str, extra: Optional[Dict[str, Any]] = None) -> str:
+    now = datetime.utcnow()
+    payload = {
+        "sub": subject,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=JWT_EXPIRES_MIN)).timestamp())
+    }
+    if extra:
+        payload.update(extra)
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+def decode_token(token: str) -> Dict[str, Any]:
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
