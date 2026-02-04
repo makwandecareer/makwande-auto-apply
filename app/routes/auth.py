@@ -1,37 +1,37 @@
-from fastapi import APIRouter, Depends
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel, EmailStr
 
-from app.core.auth_utils import (
-    SignupRequest,
-    signup_user,
-    authenticate_user,
-    create_access_token,
-    get_current_user,
-    UserPublic,
-)
+from app.core.auth_utils import create_user, authenticate_user, create_access_token, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/signup", response_model=UserPublic)
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: Optional[str] = None
+
+
+@router.post("/signup")
 def signup(payload: SignupRequest):
-    return signup_user(payload)
+    return create_user(payload.email, payload.password, payload.full_name)
 
 
 @router.post("/login")
-def login(form: OAuth2PasswordRequestForm = Depends()):
-    # Swagger sends "username" & "password" as form-urlencoded
-    user = authenticate_user(form.username, form.password)
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    email = (form_data.username or "").strip().lower()
+    password = form_data.password
+
+    user = authenticate_user(email, password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = create_access_token({"sub": user["email"]})
     return {"access_token": token, "token_type": "bearer"}
 
 
 @router.get("/me")
-def me(user: dict = Depends(get_current_user)):
-    # return safe fields only
-    return {
-        "email": user.get("email"),
-        "full_name": user.get("full_name"),
-        "is_active": user.get("is_active", True),
-    }
+def me(current_user=Depends(get_current_user)):
+    return current_user
