@@ -40,3 +40,14 @@ def decode_token(token: str) -> Dict[str, Any]:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"
         )
+
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")  # IMPORTANT
+
+def get_password_hash(password: str) -> str:
+    if not isinstance(password, str):
+        raise HTTPException(status_code=400, detail="Password must be a string")
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+

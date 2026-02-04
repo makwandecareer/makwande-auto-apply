@@ -155,4 +155,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 def me(current_user=Depends(get_current_user)):
     return current_user
 
+@router.post("/signup")
+def signup(payload: SignupRequest):
+    email = payload.email.strip().lower()
+    password = payload.password  # THIS must be a plain string
+
+    hashed = get_password_hash(password)  # ✅ correct
+    # save user with hashed password...
 
