@@ -1,177 +1,119 @@
 import os
 import json
-from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from datetime import timedelta
+from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-
-from passlib.context import CryptContext
-from jose import jwt, JWTError
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, EmailStr, Field
-from app.models.schemas import SignupRequest, LoginRequest
 
+from app.core.security import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    get_current_user,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # ----------------------------
-# Config
+# Storage (simple JSON DB)
 # ----------------------------
-SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_TO_A_LONG_RANDOM_SECRET")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+DATA_DIR = os.getenv("DATA_DIR", "data")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+def _ensure_data_dir():
+    os.makedirs(DATA_DIR, exist_ok=True)
 
-# ✅ Always point to app/data/users.json reliably
-USERS_FILE = Path(__file__).resolve().parents[1] / "data" / "users.json"
-
-
-# ----------------------------
-# Helpers
-# ----------------------------
-def _ensure_users_file():
-    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if not USERS_FILE.exists():
-        USERS_FILE.write_text("[]", encoding="utf-8")
-
-
-def _load_users():
-    _ensure_users_file()
-    raw = USERS_FILE.read_text(encoding="utf-8").strip()
-    if not raw:
-        return []
-    return json.loads(raw)
-
-
-def _save_users(users):
-    _ensure_users_file()
-    USERS_FILE.write_text(json.dumps(users, indent=2), encoding="utf-8")
-
-
-def _hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
-
-def _verify_password(password: str, hashed: str) -> bool:
-    return pwd_context.verify(password, hashed)
-
-
-def _create_access_token(data: dict, expires_minutes: int = ACCESS_TOKEN_EXPIRE_MINUTES) -> str:
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-
-def _get_user_by_email(email: str):
-    users = _load_users()
-    for u in users:
-        if u.get("email", "").lower() == email.lower():
-            return u
-    return None
-
-
-def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
+def _load_users() -> Dict[str, Any]:
+    _ensure_data_dir()
+    if not os.path.exists(USERS_FILE):
+        return {}
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: Optional[str] = payload.get("sub")
-        if not email:
-            raise HTTPException(status_code=401, detail="Invalid token (missing subject)")
-        user = _get_user_by_email(email)
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        return {"id": user["id"], "email": user["email"], "full_name": user.get("full_name", "")}
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        # If file is corrupted, fail safely
+        return {}
 
+def _save_users(users: Dict[str, Any]) -> None:
+    _ensure_data_dir()
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=2)
+
+# ----------------------------
+# Schemas
+# ----------------------------
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)  # no max here because bcrypt_sha256 supports long inputs
+    full_name: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1)
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 # ----------------------------
 # Routes
 # ----------------------------
-class SignupRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=6, max_length=72)  # bcrypt limit
-    full_name: str | None = None
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=1, max_length=72)
-
-
 @router.get("/ping")
 def ping():
-    return {"status": "ok", "auth": "alive"}
-
+    return {"status": "ok", "message": "auth router alive ✅"}
 
 @router.post("/signup")
-def signup(payload: dict):
-    """
-    Expected JSON:
-    { "email": "...", "password": "...", "full_name": "..." }
-    """
+def signup(payload: SignupRequest):
     try:
-        email = (payload.get("email") or "").strip().lower()
-        password = (payload.get("password") or "").strip()
-        full_name = (payload.get("full_name") or "").strip()
-
-        if not email or not password:
-            raise HTTPException(status_code=400, detail="Email and password are required")
+        email = payload.email.strip().lower()
+        password = payload.password  # IMPORTANT: hash only this string
 
         users = _load_users()
-        if any(u.get("email", "").lower() == email for u in users):
+        if email in users:
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        new_id = (max([u.get("id", 0) for u in users]) + 1) if users else 1
-        user = {
-            "id": new_id,
-            "email": email,
-            "full_name": full_name,
-            "password_hash": _hash_password(password),
-            "created_at": datetime.utcnow().isoformat() + "Z",
-        }
+        hashed_password = get_password_hash(password)
 
-        users.append(user)
+        users[email] = {
+            "email": email,
+            "full_name": payload.full_name or "",
+            "password_hash": hashed_password,
+        }
         _save_users(users)
 
-        return {"ok": True, "id": new_id, "email": email, "full_name": full_name}
+        return {"message": "Signup successful ✅", "email": email, "full_name": users[email]["full_name"]}
 
     except HTTPException:
         raise
     except Exception as e:
-        # ✅ Avoid silent 500s
+        # Keep this clean but informative
         raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
 
+@router.post("/login", response_model=TokenResponse)
+def login(payload: LoginRequest):
+    try:
+        email = payload.email.strip().lower()
+        users = _load_users()
 
-@router.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    """
-    OAuth2 Password flow (Swagger popup uses this)
-    username = email
-    password = password
-    """
-    user = _get_user_by_email(form_data.username)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        user = users.get(email)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    if not _verify_password(form_data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not verify_password(payload.password, user.get("password_hash", "")):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    token = _create_access_token({"sub": user["email"]})
-    return {"access_token": token, "token_type": "bearer"}
+        token = create_access_token(
+            data={"sub": email},
+            expires_delta=timedelta(days=30)
+        )
+        return {"access_token": token, "token_type": "bearer"}
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 @router.get("/me")
 def me(current_user=Depends(get_current_user)):
-    return current_user
-
-@router.post("/signup")
-def signup(payload: SignupRequest):
-    email = payload.email.strip().lower()
-    password = payload.password  # THIS must be a plain string
-
-    hashed = get_password_hash(password)  # ✅ correct
-    # save user with hashed password...
-
+    return {"user": current_user}
