@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
+from app.routes.users import get_current_user
 
 from app.db.session import get_db
 
@@ -162,3 +163,23 @@ def login(
 @router.get("/me", response_model=UserOut)
 def me(current=Depends(get_current_user)):
     return current
+
+    # app/routes/auth.py
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+
+# Import ALL auth utilities from core
+from app.core.auth_utils import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user,
+    get_user_by_email,
+    load_users,
+    save_users,
+    validate_password_length,
+)
+
