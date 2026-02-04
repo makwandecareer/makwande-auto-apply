@@ -69,3 +69,12 @@ safe_include("app.routes.jobs")       # ✅ our new real jobs router
 safe_include("app.routes.cv")
 safe_include("app.routes.billing")
 
+from app.routes import auth, users, jobs, cv, billing
+
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(jobs.router)
+app.include_router(cv.router)
+app.include_router(billing.router)
+
+

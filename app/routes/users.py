@@ -66,3 +66,19 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 def users_me(current_user=Depends(get_current_user)):
     return current_user
 
+    from fastapi import APIRouter, Depends
+
+from app.routes.auth import get_current_user
+
+
+router = APIRouter(
+    prefix="/api/users",
+    tags=["Users"]
+)
+
+
+@router.get("/profile")
+def profile(user=Depends(get_current_user)):
+    return user
+
+
