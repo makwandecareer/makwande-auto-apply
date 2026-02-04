@@ -9,6 +9,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 from passlib.context import CryptContext
 from jose import jwt, JWTError
+from pydantic import BaseModel, EmailStr, Field
+from app.models.schemas import SignupRequest, LoginRequest
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -89,6 +91,16 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
 # ----------------------------
 # Routes
 # ----------------------------
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=72)  # bcrypt limit
+    full_name: str | None = None
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=72)
+
+
 @router.get("/ping")
 def ping():
     return {"status": "ok", "auth": "alive"}
