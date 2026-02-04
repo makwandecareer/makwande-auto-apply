@@ -7,7 +7,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 
-from app.db import get_db
+from app.db.session import get_db
 
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
