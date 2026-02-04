@@ -6,22 +6,21 @@ from app.core.db import init_db
 from app.core.users_repo import create_user, get_user_by_email, get_user_by_id
 from app.core.security import verify_password, create_access_token, decode_token
 
+# ✅ Create router
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# FastAPI dependency to read "Authorization: Bearer <token>"
+# ✅ Ensure DB exists when this module is imported
+init_db()
+
+# ✅ Bearer token reader
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
-
-@router.on_event("startup")
-def _startup():
-    # ensure DB tables exist when router loads
-    init_db()
 
 
 class SignupIn(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=120)
     email: EmailStr
     password: str = Field(..., min_length=6, max_length=128)
+
 
 class LoginIn(BaseModel):
     email: EmailStr
@@ -56,7 +55,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 def signup(payload: SignupIn):
     user = create_user(payload.full_name, payload.email, payload.password)
     token = create_access_token(subject=f"user:{user['id']}")
-    # ✅ frontend expects {token, user}
     return {"token": token, "user": user_public(user)}
 
 
@@ -67,7 +65,6 @@ def login(payload: LoginIn):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     token = create_access_token(subject=f"user:{user['id']}")
-    # ✅ frontend expects {token, user}
     return {"token": token, "user": user_public(user)}
 
 
