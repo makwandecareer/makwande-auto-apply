@@ -55,4 +55,14 @@ def me(token: str = Depends(oauth2_scheme)):
         "created_at": user.get("created_at"),
     }
 
+from fastapi import APIRouter, Depends
+
+# Reuse your auth dependency
+from app.routes.auth import get_current_user
+
+router = APIRouter(prefix="/api/users", tags=["users"])
+
+@router.get("/me")
+def users_me(current_user=Depends(get_current_user)):
+    return current_user
 
