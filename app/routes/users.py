@@ -1,85 +1,104 @@
+# app/routes/users.py
+
 import os
 import json
+from typing import Optional, Dict, Any, List
+
+import jwt
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
-import jwt  # pyjwt
-from fastapi import Depends
-from app.db.session import get_db
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-USERS_FILE = os.path.join("app", "data", "users.json")
+# IMPORTANT:
+# On Render, writing inside the repo directory can fail.
+# /tmp is writable. If you attach a Render Disk, set DATA_DIR to that mount path.
+DATA_DIR = os.getenv("DATA_DIR", "/tmp")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
 SECRET_KEY = os.getenv("SECRET_KEY", "makwande-secret-key")
-ALGORITHM = "HS256"
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
-def _load_users():
-    if not os.path.exists(USERS_FILE):
-        return []
+def _ensure_users_file() -> None:
+    try:
+        if not os.path.exists(USERS_FILE):
+            with open(USERS_FILE, "w", encoding="utf-8") as f:
+                json.dump([], f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"User storage error: {str(e)}")
+
+
+def _load_users() -> List[Dict[str, Any]]:
+    _ensure_users_file()
     try:
         with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            return []
+    except json.JSONDecodeError:
+        # If the file got corrupted somehow, reset safely instead of crashing the API
+        try:
+            with open(USERS_FILE, "w", encoding="utf-8") as f:
+                json.dump([], f)
+        except Exception:
+            pass
+        return []
     except Exception:
         return []
 
 
-def _decode_token(token: str):
+def _decode_token(token: str) -> Dict[str, Any]:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except Exception:
-        return None
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
-@router.get("/me")
-def me(token: str = Depends(oauth2_scheme)):
+def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     payload = _decode_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    email = payload.get("email")
+    email = payload.get("sub") or payload.get("email")
     if not email:
-        raise HTTPException(status_code=401, detail="Token missing email")
+        raise HTTPException(status_code=401, detail="Token missing user identity (email/sub)")
 
     users = _load_users()
-    user = next((u for u in users if u.get("email") == email), None)
+    user = next((u for u in users if (u.get("email") or "").lower() == email.lower()), None)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Never return password hashes
-    return {
-        "id": user.get("id"),
-        "email": user.get("email"),
-        "full_name": user.get("full_name"),
-        "created_at": user.get("created_at"),
-    }
+    # Never expose password hashes
+    safe_user = dict(user)
+    safe_user.pop("password_hash", None)
+    safe_user.pop("hashed_password", None)
+    safe_user.pop("password", None)
 
-from fastapi import APIRouter, Depends
+    return safe_user
 
-# Reuse your auth dependency
-from app.routes.auth import get_current_user
-
-router = APIRouter(prefix="/api/users", tags=["users"])
 
 @router.get("/me")
-def users_me(current_user=Depends(get_current_user)):
+def me(current_user: Dict[str, Any] = Depends(get_current_user)):
     return current_user
 
-    from fastapi import APIRouter, Depends
 
-from app.routes.auth import get_current_user
+@router.get("/{email}")
+def get_user_by_email(email: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    # Simple protected lookup - optional
+    users = _load_users()
+    user = next((u for u in users if (u.get("email") or "").lower() == email.lower()), None)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
+    safe_user = dict(user)
+    safe_user.pop("password_hash", None)
+    safe_user.pop("hashed_password", None)
+    safe_user.pop("password", None)
 
-router = APIRouter(
-    prefix="/api/users",
-    tags=["Users"]
-)
-
-
-@router.get("/profile")
-def profile(user=Depends(get_current_user)):
-    return user
-
-
+    return safe_user
