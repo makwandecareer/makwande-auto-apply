@@ -1,26 +1,24 @@
+# app/main.py
 import os
 import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# ---------------------------------------
-# Logging
-# ---------------------------------------
+
 logger = logging.getLogger("makwande-auto-apply")
 logging.basicConfig(level=logging.INFO)
 
-# ---------------------------------------
-# Create app FIRST (this fixes your crash)
-# ---------------------------------------
+
 app = FastAPI(
     title="Makwande Auto Apply",
     version="1.0.0",
     description="Makwande Auto Apply API",
 )
 
-# ---------------------------------------
-# CORS (allow frontend + swagger)
-# ---------------------------------------
+# -----------------------------
+# CORS
+# -----------------------------
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*")
 origins = [o.strip() for o in ALLOWED_ORIGINS.split(",")] if ALLOWED_ORIGINS else ["*"]
 
@@ -32,9 +30,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------
+# -----------------------------
 # Basic endpoints
-# ---------------------------------------
+# -----------------------------
 @app.get("/")
 def home():
     return {
@@ -43,56 +41,31 @@ def home():
         "health": "/health",
     }
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-# ---------------------------------------
-# Router mounting (AFTER app exists)
-# ---------------------------------------
+# -----------------------------
+# Routers
+# -----------------------------
 def safe_include(module_path: str, router_attr: str = "router"):
     """
-    Loads router without crashing the app if missing.
+    Include a router without crashing startup if it is missing.
     """
     try:
         mod = __import__(module_path, fromlist=[router_attr])
         router = getattr(mod, router_attr)
         app.include_router(router)
-        logger.info(f"Router mounted: {module_path}")
+        logger.info("Router mounted: %s", module_path)
     except Exception as e:
-        logger.warning(f"Could not import {module_path}: {e}")
+        logger.warning("Could not import %s: %s", module_path, e)
 
-# Keep your existing routers (only if they exist)
+# Only mount routers this way (do NOT mount again below)
 safe_include("app.routes.auth")
 safe_include("app.routes.users")
-safe_include("app.routes.jobs")       # ✅ our new real jobs router
+safe_include("app.routes.jobs")
 safe_include("app.routes.cv")
 safe_include("app.routes.billing")
-
-from app.routes import auth, users, jobs, cv, billing
-
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(jobs.router)
-app.include_router(cv.router)
-app.include_router(billing.router)
-
-import logging
-
-logging.basicConfig(level=logging.INFO)
-
-from fastapi import FastAPI
-from app.db import init_db
-from routers_pro import router as pro_router
-
-app = FastAPI()
-
-@app.on_event("startup")
-def startup():
-    init_db()
-
-# Add your existing routers...
-app.include_router(pro_router, prefix="/api", tags=["pro"])
-
 
 
