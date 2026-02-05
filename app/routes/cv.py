@@ -22,7 +22,7 @@ router = APIRouter(prefix="/cv", tags=["CV"])
 UPLOAD_DIR = os.path.join("data", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-fetch(`${getApiBase()}/api/auth/login`)
+
 
 class RevampRequest(BaseModel):
     stored_as: str | None = None
