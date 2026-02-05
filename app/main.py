@@ -82,7 +82,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 from fastapi import FastAPI
-from db import init_db
+from app.db import init_db
 from routers_pro import router as pro_router
 
 app = FastAPI()
