@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
-fetch(`${getApiBase()}/api/auth/login`)
+
 
 @router.get("/plans")
 def plans():

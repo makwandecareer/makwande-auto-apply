@@ -18,7 +18,7 @@ logger = logging.getLogger("makwande-auto-apply")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-fetch(`${getApiBase()}/api/auth/login`)
+
 
 
 class SignupRequest(BaseModel):
