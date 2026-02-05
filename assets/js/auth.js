@@ -1,30 +1,87 @@
-function setSession({ token, user }) {
-  if (token) localStorage.setItem(window.APP_CONFIG.STORAGE_KEYS.token, token);
-  if (user) localStorage.setItem(window.APP_CONFIG.STORAGE_KEYS.user, JSON.stringify(user));
-}
+// /assets/js/auth.js
 
-function clearSession() {
-  localStorage.removeItem(window.APP_CONFIG.STORAGE_KEYS.token);
-  localStorage.removeItem(window.APP_CONFIG.STORAGE_KEYS.user);
-}
+function setSession(data) {
+  // data should look like: { access_token, token_type, user? }
+  if (!data || !data.access_token) throw new Error("Missing access token");
 
-function getUser() {
-  const raw = localStorage.getItem(window.APP_CONFIG.STORAGE_KEYS.user);
-  try { return raw ? JSON.parse(raw) : null; } catch { return null; }
-}
+  localStorage.setItem("ACCESS_TOKEN", data.access_token);
+  localStorage.setItem("TOKEN_TYPE", data.token_type || "bearer");
 
-function isLoggedIn() {
-  return !!localStorage.getItem(window.APP_CONFIG.STORAGE_KEYS.token);
-}
-
-function requireAuth() {
-  if (!isLoggedIn()) {
-    const next = encodeURIComponent(window.location.pathname);
-    window.location.href = `/login.html?next=${next}`;
+  if (data.user) {
+    localStorage.setItem("USER", JSON.stringify(data.user));
   }
 }
 
-function logout() {
-  clearSession();
-  window.location.href = "/login.html";
+function clearSession() {
+  localStorage.removeItem("ACCESS_TOKEN");
+  localStorage.removeItem("TOKEN_TYPE");
+  localStorage.removeItem("USER");
+}
+
+function getToken() {
+  return localStorage.getItem("ACCESS_TOKEN");
+}
+
+function authHeader() {
+  const token = getToken();
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
+function isLoggedIn() {
+  return !!getToken();
+}
+
+// /assets/js/auth.js
+
+function getToken() {
+  return localStorage.getItem("token");
+}
+
+function setToken(token) {
+  localStorage.setItem("token", token);
+}
+
+function clearToken() {
+  localStorage.removeItem("token");
+}
+
+async function login(email, password, apiBase) {
+  const res = await fetch(`${apiBase}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      username: email,
+      password: password
+    })
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Login failed");
+
+  // backend returns { access_token, token_type }
+  setToken(data.access_token);
+  return data;
+}
+
+async function me(apiBase) {
+  const token = getToken();
+  if (!token) throw new Error("No token found");
+
+  const res = await fetch(`${apiBase}/api/auth/me`, {
+    headers: { Authorization: "Bearer " + token }
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || "Auth check failed");
+  return data;
+}
+
+// Protect page: redirect to login if no token
+function requireAuth() {
+  const token = getToken();
+  if (!token) {
+    const next = encodeURIComponent(window.location.pathname);
+    window.location.href = `/login.html?next=${next}`;
+  }
 }
