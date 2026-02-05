@@ -2,33 +2,23 @@
 
 import os
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-import jwt
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-# On Render, write to /tmp unless you mounted a Disk and set DATA_DIR to that path.
+# Use /tmp by default on Render (writable)
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "makwande-secret-key")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
 
 def _ensure_users_file() -> None:
-    try:
-        if not os.path.exists(USERS_FILE):
-            with open(USERS_FILE, "w", encoding="utf-8") as f:
-                json.dump([], f)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"User storage error: {str(e)}")
+    if not os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
 
 
 def _load_users() -> List[Dict[str, Any]]:
@@ -38,64 +28,44 @@ def _load_users() -> List[Dict[str, Any]]:
             data = json.load(f)
             return data if isinstance(data, list) else []
     except json.JSONDecodeError:
-        # reset corrupted file safely
-        try:
-            with open(USERS_FILE, "w", encoding="utf-8") as f:
-                json.dump([], f)
-        except Exception:
-            pass
+        # If corrupted, reset
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
         return []
     except Exception:
         return []
 
 
-def _decode_token(token: str) -> Dict[str, Any]:
-    try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+def _safe_user(user: Dict[str, Any]) -> Dict[str, Any]:
+    safe = dict(user)
+    safe.pop("password_hash", None)
+    safe.pop("hashed_password", None)
+    safe.pop("password", None)
+    return safe
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
-    payload = _decode_token(token)
-
-    email = payload.get("sub") or payload.get("email")
-    if not email:
-        raise HTTPException(status_code=401, detail="Token missing user identity (email/sub)")
-
+@router.get("/me")
+def me(email: str = Query(..., description="For now, pass email as query param e.g. /me?email=test@x.com")):
+    """
+    TEMPORARY (Auth disabled):
+    Return user details by email without JWT.
+    We'll lock this down later with get_current_user.
+    """
     users = _load_users()
     user = next((u for u in users if (u.get("email") or "").lower() == email.lower()), None)
-
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-
-    # Never expose password hashes
-    safe_user = dict(user)
-    safe_user.pop("password_hash", None)
-    safe_user.pop("hashed_password", None)
-    safe_user.pop("password", None)
-
-    return safe_user
+    return _safe_user(user)
 
 
-@router.get("/me", operation_id="users_me")
-def me(current_user: Dict[str, Any] = Depends(get_current_user)):
-    return current_user
-
-
-@router.get("/{email}", operation_id="users_get_by_email")
-def get_user_by_email(email: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+@router.get("/by-email")
+def get_user_by_email(email: str = Query(...)):
+    """
+    TEMPORARY (Auth disabled):
+    Return user details by email without JWT.
+    """
     users = _load_users()
     user = next((u for u in users if (u.get("email") or "").lower() == email.lower()), None)
-
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-
-    safe_user = dict(user)
-    safe_user.pop("password_hash", None)
-    safe_user.pop("hashed_password", None)
-    safe_user.pop("password", None)
-
-    return safe_user
+    return _safe_user(user)
