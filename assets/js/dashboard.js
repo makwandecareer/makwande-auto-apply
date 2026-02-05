@@ -1,73 +1,261 @@
-requireAuth();
+// assets/js/dashboard.js
 
-function itemRow(title, meta, right = "", actionsHtml = ""){
-  return `
-    <div class="d-flex justify-content-between align-items-start gap-2 py-2">
-      <div style="min-width:0;">
-        <div class="fw-semibold text-truncate">${escapeHtml(title)}</div>
-        <div class="small-muted text-truncate">${escapeHtml(meta)}</div>
-        ${actionsHtml ? `<div class="mt-2 d-flex gap-2 flex-wrap">${actionsHtml}</div>` : ""}
-      </div>
-      <div class="small-muted">${escapeHtml(right)}</div>
-    </div>
-    <hr class="soft my-1"/>
-  `;
-}
+(async function () {
+  // Protect route
+  if (!Auth.requireAuth()) return;
 
-let savedCache = [];
+  // UI elements
+  const elUserName = document.getElementById("userName");
+  const elUserEmail = document.getElementById("userEmail");
+  const elStatApps = document.getElementById("statApps");
+  const elStatSaved = document.getElementById("statSaved");
+  const elStatPlan = document.getElementById("statPlan");
+  const elAppsMeta = document.getElementById("appsMeta");
+  const elPlanMeta = document.getElementById("planMeta");
+  const elLastSync = document.getElementById("lastSync");
 
-async function loadDashboard(){
-  try{
-    const user = await safeMeSync() || getUser();
-    document.getElementById("userTag").textContent = user?.full_name ? `Hello, ${user.full_name}` : "Hello";
+  const tbody = document.getElementById("appsTbody");
+  const elAppsCount = document.getElementById("appsCount");
 
-    const [apps, saved, billing] = await Promise.all([
-      API.applications().catch(() => []),
-      API.savedJobs().catch(() => []),
-      API.subscriptionStatus().catch(() => ({ status: "unknown" }))
-    ]);
+  const qSearch = document.getElementById("qSearch");
+  const qStatus = document.getElementById("qStatus");
+  const qSort = document.getElementById("qSort");
 
-    const appsArr = Array.isArray(apps) ? apps : (apps.applications || []);
-    const savedArr = Array.isArray(saved) ? saved : (saved.jobs || []);
-    savedCache = savedArr;
+  const btnLogout = document.getElementById("btnLogout");
+  const btnRefresh = document.getElementById("btnRefresh");
+  const btnExport = document.getElementById("btnExport");
+  const btnPrev = document.getElementById("btnPrev");
+  const btnNext = document.getElementById("btnNext");
 
-    document.getElementById("kpiApps").textContent = appsArr.length;
-    document.getElementById("kpiSaved").textContent = savedArr.length;
-    document.getElementById("kpiSub").textContent = billing.status || "unknown";
+  // State
+  let user = null;
+  let applications = [];
+  let filtered = [];
+  let page = 1;
+  const pageSize = 8;
 
-    const appsList = document.getElementById("appsList");
-    appsList.innerHTML = appsArr.length
-      ? appsArr.slice(0, 30).map(a => itemRow(
-          a.title || a.job_title || "Application",
-          `${a.company || "—"} • ${a.status || "submitted"}`,
-          a.created_at ? fmtDate(a.created_at) : "",
-          (a.url || a.apply_url) ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noreferrer" href="${a.url || a.apply_url}">Open</a>` : ""
-        )).join("")
-      : `<div class="small-muted">No applications yet. Go to Jobs and apply ✅</div>`;
-
-    const savedList = document.getElementById("savedList");
-    savedList.innerHTML = savedArr.length
-      ? savedArr.slice(0, 30).map(j => itemRow(
-          j.title || "Saved Job",
-          `${j.company || "—"} • ${(j.location || j.city || j.country || "—")}`,
-          "",
-          (j.url || j.apply_url) ? `<a class="btn btn-outline-light btn-sm" target="_blank" rel="noreferrer" href="${j.url || j.apply_url}">Open</a>` : ""
-        )).join("")
-      : `<div class="small-muted">No saved jobs yet. Save jobs from the Jobs page ⭐</div>`;
-
-  }catch(err){
-    toast(err.message, "err");
+  function setLoadingTable(isLoading) {
+    if (!tbody) return;
+    if (isLoading) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6">
+            <div class="p-3 skeleton glass">Loading applications securely from API…</div>
+          </td>
+        </tr>
+      `;
+    }
   }
-}
 
-document.getElementById("exportSavedBtn").addEventListener("click", ()=>{
-  const rows = savedCache.map(j => ({
-    title: j.title || "",
-    company: j.company || "",
-    location: j.location || j.city || j.country || "",
-    url: j.url || j.apply_url || ""
-  }));
-  downloadCSV(`makwande_saved_jobs_${new Date().toISOString().slice(0,10)}.csv`, rows);
-});
+  function normalizeApp(app) {
+    // Your backend structure may differ; normalize gracefully
+    return {
+      application_id: app.application_id || app.id || "",
+      job_title: app.job_title || app.title || "",
+      company: app.company || "",
+      location: app.location || "",
+      status: app.status || "Draft",
+      notes: app.notes || "",
+    };
+  }
 
-window.addEventListener("DOMContentLoaded", loadDashboard);
+  function applyFilters() {
+    const s = (qSearch.value || "").trim().toLowerCase();
+    const st = qStatus.value || "";
+    const sort = qSort.value || "newest";
+
+    let list = applications.slice();
+
+    if (s) {
+      list = list.filter((a) => {
+        const blob = `${a.job_title} ${a.company} ${a.location} ${a.notes}`.toLowerCase();
+        return blob.includes(s);
+      });
+    }
+
+    if (st) {
+      list = list.filter((a) => a.status === st);
+    }
+
+    // Sorting
+    if (sort === "company") list.sort((a, b) => a.company.localeCompare(b.company));
+    if (sort === "title") list.sort((a, b) => a.job_title.localeCompare(b.job_title));
+
+    // newest/oldest only possible if backend gives dates; otherwise keep stable
+    filtered = list;
+    page = 1;
+    render();
+  }
+
+  function statusBadge(status) {
+    const map = {
+      Draft: "secondary",
+      Applied: "primary",
+      Interview: "warning",
+      Offer: "success",
+      Rejected: "danger",
+    };
+    const cls = map[status] || "secondary";
+    return `<span class="badge text-bg-${cls}">${UI.escapeHtml(status)}</span>`;
+  }
+
+  function render() {
+    UI.clearAlert();
+
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (page > totalPages) page = totalPages;
+
+    const start = (page - 1) * pageSize;
+    const slice = filtered.slice(start, start + pageSize);
+
+    elAppsCount.textContent = `Showing ${slice.length} of ${total} applications • Page ${page}/${totalPages}`;
+    elStatApps.textContent = String(applications.length);
+
+    if (!slice.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="p-3 muted">
+            No applications found. Apply to a job to see it here.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = slice.map((a) => {
+      const id = UI.escapeHtml(a.application_id);
+      return `
+        <tr>
+          <td><div class="fw-semibold">${UI.escapeHtml(a.job_title || "—")}</div><div class="small muted mono">${id}</div></td>
+          <td>${UI.escapeHtml(a.company || "—")}</td>
+          <td>${UI.escapeHtml(a.location || "—")}</td>
+          <td>${statusBadge(a.status)}</td>
+          <td class="small">${UI.escapeHtml(a.notes || "")}</td>
+          <td>
+            <div class="d-flex gap-2 flex-wrap">
+              <select class="form-select form-select-sm" data-action="status" data-id="${id}">
+                ${["Draft","Applied","Interview","Offer","Rejected"].map(s => `
+                  <option ${a.status===s ? "selected":""}>${s}</option>
+                `).join("")}
+              </select>
+              <button class="btn btn-soft btn-sm" data-action="save" data-id="${id}">Save</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    // Hook actions
+    tbody.querySelectorAll("[data-action='save']").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-id");
+        const sel = tbody.querySelector(`[data-action="status"][data-id="${CSS.escape(id)}"]`);
+        const newStatus = sel ? sel.value : "Draft";
+
+        btn.disabled = true;
+        btn.textContent = "Saving…";
+
+        try {
+          await API.updateApplicationStatus(id, newStatus);
+          const idx = applications.findIndex(x => x.application_id === id);
+          if (idx >= 0) applications[idx].status = newStatus;
+          applyFilters();
+          UI.showAlert("success", "Status updated successfully.");
+          setTimeout(UI.clearAlert, 2000);
+        } catch (err) {
+          if (Auth.handleAuthError(err)) return;
+          UI.showAlert("danger", err.message || "Failed to update status.");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Save";
+        }
+      });
+    });
+
+    btnPrev.disabled = page <= 1;
+    btnNext.disabled = page >= totalPages;
+  }
+
+  async function loadUser() {
+    user = await API.me();
+    elUserName.textContent = user.full_name || "User";
+    elUserEmail.textContent = user.email || "";
+  }
+
+  async function loadPlans() {
+    const data = await API.plans();
+    // For now we don’t have user plan in backend; show Pro as default until billing is implemented
+    elStatPlan.textContent = "Pro (R300/mo)";
+    elPlanMeta.textContent = `${data.currency} • Plans loaded from API`;
+  }
+
+  async function loadApplications() {
+    setLoadingTable(true);
+    const raw = await API.listApplications();
+    applications = Array.isArray(raw) ? raw.map(normalizeApp) : [];
+    elAppsMeta.textContent = `Last update: ${UI.formatNow()}`;
+    elLastSync.textContent = `Last sync: ${UI.formatNow()}`;
+    setLoadingTable(false);
+    applyFilters();
+  }
+
+  function wireEvents() {
+    btnLogout.addEventListener("click", () => {
+      Auth.clearToken();
+      window.location.href = "/login.html";
+    });
+
+    btnRefresh.addEventListener("click", async () => {
+      UI.clearAlert();
+      try {
+        await boot();
+        UI.showAlert("success", "Dashboard refreshed.");
+        setTimeout(UI.clearAlert, 2000);
+      } catch (err) {
+        if (Auth.handleAuthError(err)) return;
+        UI.showAlert("danger", err.message || "Refresh failed.");
+      }
+    });
+
+    btnExport.addEventListener("click", () => {
+      const rows = filtered.map(a => ({
+        application_id: a.application_id,
+        job_title: a.job_title,
+        company: a.company,
+        location: a.location,
+        status: a.status,
+        notes: a.notes,
+      }));
+
+      const csv = UI.toCsv(rows, ["application_id","job_title","company","location","status","notes"]);
+      UI.downloadFile(`applications_${new Date().toISOString().slice(0,10)}.csv`, csv);
+    });
+
+    qSearch.addEventListener("input", applyFilters);
+    qStatus.addEventListener("change", applyFilters);
+    qSort.addEventListener("change", applyFilters);
+
+    btnPrev.addEventListener("click", () => { page = Math.max(1, page - 1); render(); });
+    btnNext.addEventListener("click", () => { page = page + 1; render(); });
+  }
+
+  async function boot() {
+    UI.clearAlert();
+    try {
+      // minor placeholders
+      elStatSaved.textContent = "0";
+
+      await loadUser();
+      await loadPlans();
+      await loadApplications();
+    } catch (err) {
+      if (Auth.handleAuthError(err)) return;
+      UI.showAlert("danger", err.message || "Failed to load dashboard.");
+      setLoadingTable(false);
+    }
+  }
+
+  wireEvents();
+  await boot();
+})();

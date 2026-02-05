@@ -17,3 +17,20 @@ function getApiBase() {
 
   return DEFAULT_API_BASE;
 }
+
+
+(function () {
+  const meta = document.querySelector('meta[name="api-base"]');
+  const metaBase = meta ? meta.getAttribute("content") : "";
+
+  // Priority: localStorage override > meta tag > fallback
+  const fallback = "https://makwande-auto-apply.onrender.com";
+
+  window.getApiBase = function getApiBase() {
+    return (
+      localStorage.getItem("API_BASE") ||
+      metaBase ||
+      fallback
+    ).replace(/\/+$/, "");
+  };
+})();

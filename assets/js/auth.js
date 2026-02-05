@@ -85,3 +85,47 @@ function requireAuth() {
     window.location.href = `/login.html?next=${next}`;
   }
 }
+
+(function () {
+  const TOKEN_KEY = "token";
+
+  function setToken(token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+
+  function getToken() {
+    return localStorage.getItem(TOKEN_KEY);
+  }
+
+  function clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+
+  // If not logged in, redirect to login page
+  function requireAuth() {
+    const t = getToken();
+    if (!t) {
+      window.location.href = "/login.html";
+      return false;
+    }
+    return true;
+  }
+
+  // On 401, clear and redirect
+  function handleAuthError(err) {
+    if (err && err.status === 401) {
+      clearToken();
+      window.location.href = "/login.html?next=/dashboard.html";
+      return true;
+    }
+    return false;
+  }
+
+  window.Auth = {
+    setToken,
+    getToken,
+    clearToken,
+    requireAuth,
+    handleAuthError,
+  };
+})();

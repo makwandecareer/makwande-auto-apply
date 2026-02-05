@@ -78,3 +78,63 @@ async function safeMeSync(){
     return null;
   }
 }
+
+(function () {
+  function escapeHtml(str) {
+    return String(str ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function showAlert(type, message) {
+    const area = document.getElementById("alertArea");
+    if (!area) return;
+
+    area.innerHTML = `
+      <div class="alert alert-${type} glass" role="alert">
+        ${escapeHtml(message)}
+      </div>
+    `;
+  }
+
+  function clearAlert() {
+    const area = document.getElementById("alertArea");
+    if (area) area.innerHTML = "";
+  }
+
+  function formatNow() {
+    const d = new Date();
+    return d.toLocaleString();
+  }
+
+  function toCsv(rows, headers) {
+    const esc = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
+    const headerLine = headers.map(esc).join(",");
+    const lines = rows.map((r) => headers.map((h) => esc(r[h])).join(","));
+    return [headerLine, ...lines].join("\n");
+  }
+
+  function downloadFile(filename, text) {
+    const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  window.UI = {
+    escapeHtml,
+    showAlert,
+    clearAlert,
+    formatNow,
+    toCsv,
+    downloadFile,
+  };
+})();
