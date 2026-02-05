@@ -3,87 +3,101 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Sign Up • Makwande Auto Apply</title>
-  <link rel="manifest" href="/manifest.json"/>
-  <meta name="theme-color" content="#0B1020"/>
+  <title>Signup • Makwande Auto Apply</title>
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
-<link href="/assets/css/app.css" rel="stylesheet"/>
-
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
 </head>
+
 <body>
-  <div id="navMount"></div>
 
-<main class="container py-5">
+<div class="container py-5">
   <div class="row justify-content-center">
-    <div class="col-lg-6">
-      <div class="cardx">
-        <div class="cardx-body">
-          <h3 class="fw-bold mb-1">Create your account</h3>
-          <p class="small-muted">One profile. CV revamp, matching, auto-apply, tracking.</p>
+    <div class="col-md-6">
 
-          <form id="signupForm" class="mt-4">
-            <div class="mb-3">
-              <label class="form-label">Full Name</label>
-              <input class="form-control" name="full_name" required placeholder="e.g. Thando Mokoena"/>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Email</label>
-              <input class="form-control" type="email" name="email" required placeholder="you@email.com"/>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Password</label>
-              <input class="form-control" type="password" name="password" required minlength="6" placeholder="Minimum 6 characters"/>
-            </div>
+      <h3 class="fw-bold text-center mb-4">Create Account</h3>
 
-            <button id="signupBtn" class="btn btn-brand w-100">Create Account</button>
+      <form id="signupForm">
 
-            <div class="text-center mt-3 small-muted">
-              Already have an account? <a href="/login.html" class="text-decoration-underline">Login</a>
-            </div>
-          </form>
+        <div class="mb-3">
+          <label>Full Name</label>
+          <input id="full_name" type="text" class="form-control">
         </div>
-      </div>
 
-      <div class="mt-3 cardx">
-        <div class="cardx-body small-muted">
-          🔒 We store only what’s needed to run your applications and dashboard.
+        <div class="mb-3">
+          <label>Email</label>
+          <input id="email" type="email" class="form-control" required>
         </div>
-      </div>
+
+        <div class="mb-3">
+          <label>Password</label>
+          <input id="password" type="password" class="form-control" required>
+        </div>
+
+        <button id="signupBtn" class="btn btn-success w-100">
+          Create Account
+        </button>
+
+        <div class="text-center mt-3">
+          Already have account?
+          <a href="/login.html">Login</a>
+        </div>
+
+      </form>
+
     </div>
   </div>
-</main>
+</div>
 
 
+<!-- CONFIG -->
 <script src="/assets/js/config.js"></script>
-<script src="/assets/js/api.js"></script>
-<script src="/assets/js/auth.js"></script>
-<script src="/assets/js/ui.js"></script>
-<script src="/assets/js/app.js"></script>
-
 
 <script>
-  document.getElementById("signupForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const btn = document.getElementById("signupBtn");
-    setLoading(btn, true);
+const API_BASE = getApiBase(); // from config.js
 
-    const payload = Object.fromEntries(new FormData(e.target).entries());
+document.getElementById("signupForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
 
-    try{
-      await API.signup(payload);
-      toast("Account created ✅ Please login.", "ok");
-      window.location.href = "/login.html";
-    }catch(err){
-      toast(err.message, "err");
-    }finally{
-      setLoading(btn, false);
+  const btn = document.getElementById("signupBtn");
+  btn.disabled = true;
+  btn.innerText = "Creating...";
+
+  const payload = {
+    full_name: document.getElementById("full_name").value,
+    email: document.getElementById("email").value,
+    password: document.getElementById("password").value
+  };
+
+  try {
+
+    const res = await fetch(`${API_BASE}/api/auth/signup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      throw new Error("Signup failed");
     }
-  });
+
+    alert("Account created ✅");
+
+    window.location.href = "/login.html";
+
+  } catch (err) {
+
+    alert("Signup failed ❌");
+
+  } finally {
+
+    btn.disabled = false;
+    btn.innerText = "Create Account";
+
+  }
+});
 </script>
-
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>
