@@ -8,6 +8,9 @@ from typing import Optional, Dict, Any, List
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
+import logging
+logger = logging.getLogger("makwande-auto-apply")
+
 
 # Linux file locking (Render is Linux)
 import fcntl

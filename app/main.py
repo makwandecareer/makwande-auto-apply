@@ -77,4 +77,8 @@ app.include_router(jobs.router)
 app.include_router(cv.router)
 app.include_router(billing.router)
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 
