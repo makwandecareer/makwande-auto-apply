@@ -81,4 +81,18 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
+from fastapi import FastAPI
+from db import init_db
+from routers_pro import router as pro_router
+
+app = FastAPI()
+
+@app.on_event("startup")
+def startup():
+    init_db()
+
+# Add your existing routers...
+app.include_router(pro_router, prefix="/api", tags=["pro"])
+
+
 
