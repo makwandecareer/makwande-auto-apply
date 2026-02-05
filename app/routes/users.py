@@ -2,7 +2,7 @@
 
 import os
 import json
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,13 +10,12 @@ from fastapi.security import OAuth2PasswordBearer
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-# IMPORTANT:
-# On Render, writing inside the repo directory can fail.
-# /tmp is writable. If you attach a Render Disk, set DATA_DIR to that mount path.
+# On Render, write to /tmp unless you mounted a Disk and set DATA_DIR to that path.
 DATA_DIR = os.getenv("DATA_DIR", "/tmp")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
+
 SECRET_KEY = os.getenv("SECRET_KEY", "makwande-secret-key")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
@@ -37,11 +36,9 @@ def _load_users() -> List[Dict[str, Any]]:
     try:
         with open(USERS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            if isinstance(data, list):
-                return data
-            return []
+            return data if isinstance(data, list) else []
     except json.JSONDecodeError:
-        # If the file got corrupted somehow, reset safely instead of crashing the API
+        # reset corrupted file safely
         try:
             with open(USERS_FILE, "w", encoding="utf-8") as f:
                 json.dump([], f)
@@ -83,16 +80,16 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     return safe_user
 
 
-@router.get("/me")
+@router.get("/me", operation_id="users_me")
 def me(current_user: Dict[str, Any] = Depends(get_current_user)):
     return current_user
 
 
-@router.get("/{email}")
+@router.get("/{email}", operation_id="users_get_by_email")
 def get_user_by_email(email: str, current_user: Dict[str, Any] = Depends(get_current_user)):
-    # Simple protected lookup - optional
     users = _load_users()
     user = next((u for u in users if (u.get("email") or "").lower() == email.lower()), None)
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -102,8 +99,3 @@ def get_user_by_email(email: str, current_user: Dict[str, Any] = Depends(get_cur
     safe_user.pop("password", None)
 
     return safe_user
-
-    @router.get("/me", operation_id="users_me")
-def me(...):
-    ...
-
