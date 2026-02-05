@@ -102,3 +102,8 @@ def get_user_by_email(email: str, current_user: Dict[str, Any] = Depends(get_cur
     safe_user.pop("password", None)
 
     return safe_user
+
+    @router.get("/me", operation_id="users_me")
+def me(...):
+    ...
+

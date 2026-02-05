@@ -19,3 +19,4 @@ pyyaml
 email-validator
 pyjwt
 python-jose[cryptography]
+bcrypt==4.1.3
