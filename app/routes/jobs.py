@@ -11,6 +11,7 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 APPS_FILE = os.path.join("data", "applications.json")
 
+fetch(`${getApiBase()}/api/auth/login`)
 
 class ApplyRequest(BaseModel):
     job_id: str
