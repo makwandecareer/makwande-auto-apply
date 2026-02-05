@@ -1,52 +1,94 @@
-import os
-import psycopg
-from psycopg.rows import dict_row
+# app/db/session.py
 
-def _normalize_db_url(url: str) -> str:
-    # Render often gives postgres://... which psycopg understands, but normalize anyway
-    if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
-    return url
-
-def get_conn():
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        raise RuntimeError("DATABASE_URL is not set")
-
-    db_url = _normalize_db_url(db_url)
-
-    # autocommit=False so we control commits
-    return psycopg.connect(db_url, row_factory=dict_row)
-
-def init_db():
-    # Create tables if not exist
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                full_name TEXT,
-                is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-            """)
-        conn.commit()
-        
 import sqlite3
-from pathlib import Path
+import os
 
-DB_PATH = Path("app/data/app.db")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "data", "database.db")
 
 
 def get_db():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    return conn
 
-    try:
-        yield conn
-    finally:
-        conn.close()
+
+def init_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # USERS
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        full_name TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # APPLICATIONS
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS applications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT,
+        job_title TEXT,
+        company TEXT,
+        status TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # SAVED JOBS
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS saved_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT,
+        job_title TEXT,
+        company TEXT,
+        url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # DOCUMENTS (CV / COVER LETTER HISTORY)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT,
+        type TEXT,
+        filename TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # AUTO APPLY LOGS
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS auto_apply_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT,
+        job_title TEXT,
+        result TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # SUBSCRIPTIONS
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT,
+        plan TEXT,
+        status TEXT,
+        expires_at TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+    print("✅ Database initialized successfully")
