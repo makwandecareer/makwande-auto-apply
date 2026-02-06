@@ -1,6 +1,6 @@
 {
-    "version": 2,
-    "framework": null,
-    "rootDirectory": "frontend"
+    "rewrites": [
+      { "source": "/", "destination": "/index.html" }
+    ]
   }
   

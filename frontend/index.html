@@ -306,12 +306,12 @@
     }
 
     function getApiBase() {
-      return (
-        localStorage.getItem(STORAGE_KEYS.API_BASE) ||
-        window.API_BASE ||
-        "http://127.0.0.1:8000"
-      );
-    }
+  return (
+    localStorage.getItem(STORAGE_KEYS.API_BASE) ||
+    "https://makwande-auto-apply.onrender.com"
+  );
+}
+
 
     function setApiBase(url) {
       const clean = (url || "").trim().replace(/\/+$/, "");
@@ -360,10 +360,11 @@
     syncNav();
   </script>
 </body>
-<script src="assets/js/config.js"></script>
-<script src="assets/js/api.js"></script>
-<script src="assets/js/auth.js"></script>
-<script src="assets/js/ui.js"></script>
-<script src="assets/js/app.js"></script>
+<!-- App scripts (absolute paths for Vercel) -->
+<script src="/assets/js/config.js"></script>
+<script src="/assets/js/api.js"></script>
+<script src="/assets/js/auth.js"></script>
+<script src="/assets/js/ui.js"></script>
+<script src="/assets/js/app.js"></script>
 
 </html>
