@@ -305,12 +305,12 @@
       return !!localStorage.getItem(STORAGE_KEYS.TOKEN);
     }
 
-    function getApiBase() {
-  return (
-    localStorage.getItem(STORAGE_KEYS.API_BASE) ||
-    "https://makwande-auto-apply.onrender.com"
-  );
-}
+    function getApiBase() 
+    return (
+  localStorage.getItem("api_base") ||
+  "https://makwande-auto-apply.onrender.com"
+);
+
 
 
     function setApiBase(url) {
