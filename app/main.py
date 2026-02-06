@@ -5,18 +5,15 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-
 logger = logging.getLogger("makwande-auto-apply")
 logging.basicConfig(level=logging.INFO)
 
-
+# ✅ Create the app ONCE (do not overwrite it)
 app = FastAPI(
     title="Makwande Auto Apply",
     version="1.0.0",
     description="Makwande Auto Apply API",
 )
-
-app = FastAPI()
 
 @app.head("/")
 def head_root():
@@ -47,7 +44,6 @@ def home():
         "health": "/health",
     }
 
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -67,11 +63,14 @@ def safe_include(module_path: str, router_attr: str = "router"):
     except Exception as e:
         logger.warning("Could not import %s: %s", module_path, e)
 
-# Only mount routers this way (do NOT mount again below)
+# ✅ Keep auth (for later), jobs & cv for public apply, billing optional
 safe_include("app.routes.auth")
-safe_include("app.routes.users")
 safe_include("app.routes.jobs")
 safe_include("app.routes.cv")
 safe_include("app.routes.billing")
+
+# ❌ Do NOT include users (no profiles yet)
+# safe_include("app.routes.users")
+
 
 
