@@ -1,71 +1,764 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8"/>
-    <title>Results - {{ app_name }}</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 24px; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-      th { background: #f6f6f6; }
-      a { word-break: break-word; }
-      .top { display:flex; justify-content: space-between; align-items:center; gap: 12px; flex-wrap:wrap; }
-      .btn { padding: 10px 12px; border:1px solid #ccc; border-radius:10px; text-decoration:none; }
-      .badge { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size: 12px; }
-      .muted { color:#666; }
-    </style>
-  </head>
-  <body>
-    <div class="top">
-      <div>
-        <h2>{{ app_name }} – Results</h2>
-        <div class="muted">Query: <b>{{ query }}</b> • CV type: <b>{{ cv_type }}</b> • Total jobs: <b>{{ total }}</b></div>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Results | Makwande Careers Auto Apply</title>
+  <meta name="description" content="View and filter your matched jobs results, export CSV, and track applications." />
+  <meta name="theme-color" content="#0d6efd" />
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
+  <style>
+    :root { --card-radius: 18px; }
+    body { background: #0b1220; }
+    .app-shell { min-height: 100vh; background:
+      radial-gradient(1200px 600px at 20% 10%, rgba(13,110,253,.25), transparent 60%),
+      radial-gradient(900px 500px at 80% 20%, rgba(32,201,151,.18), transparent 55%),
+      #0b1220; }
+    .glass {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(10px);
+      border-radius: var(--card-radius);
+    }
+    .shadow-soft { box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+    .muted { color: rgba(255,255,255,.70); }
+    .tiny { font-size: .9rem; }
+    .navbar-brand, .nav-link { color: rgba(255,255,255,.88) !important; }
+    .nav-link:hover { color: #fff !important; }
+    .btn-soft {
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.14);
+      color: #fff;
+    }
+    .btn-soft:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.20); }
+    .badge-soft {
+      background: rgba(13,110,253,.20);
+      border: 1px solid rgba(13,110,253,.35);
+      color: #dbe9ff;
+    }
+    .table-darkish {
+      --bs-table-bg: rgba(255,255,255,.04);
+      --bs-table-striped-bg: rgba(255,255,255,.06);
+      --bs-table-color: rgba(255,255,255,.85);
+      --bs-table-border-color: rgba(255,255,255,.10);
+    }
+    .score-pill { font-variant-numeric: tabular-nums; }
+    .link-white { color: rgba(255,255,255,.88); text-decoration: none; }
+    .link-white:hover { color: #fff; }
+    .divider { height:1px; background: rgba(255,255,255,.10); }
+    .form-control, .form-select { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); color: rgba(255,255,255,.88); }
+    .form-control::placeholder { color: rgba(255,255,255,.55); }
+    .form-select:focus, .form-control:focus { box-shadow: none; border-color: rgba(13,110,253,.60); }
+    option { color: #0b1220; }
+  </style>
+</head>
+
+<body>
+<div class="app-shell">
+
+  <!-- Top Status -->
+  <div class="container pt-3">
+    <div class="glass p-3 d-flex flex-column flex-md-row gap-2 justify-content-between align-items-start align-items-md-center shadow-soft">
+      <div class="d-flex gap-2 align-items-start">
+        <span class="badge badge-soft rounded-pill px-3 py-2"><i class="bi bi-clipboard-check me-1"></i>Results</span>
+        <div class="muted tiny" id="subtitle">
+          Review your matched jobs, filter, export, and track applications.
+        </div>
       </div>
-      <div>
-        <a class="btn" href="/">New search</a>
-        <a class="btn" href="/download/{{ file_id }}">Download CSV</a>
+      <div class="d-flex gap-2">
+        <a class="btn btn-sm btn-soft" href="jobs.html"><i class="bi bi-arrow-left me-1"></i>Back</a>
+        <a class="btn btn-sm btn-primary" href="dashboard.html"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg mt-3">
+    <div class="container">
+      <a class="navbar-brand fw-semibold" href="index.html">
+        <i class="bi bi-lightning-charge-fill text-primary me-1"></i>
+        Makwande Careers <span class="muted">Auto Apply</span>
+      </a>
+
+      <button class="navbar-toggler btn btn-soft" type="button" data-bs-toggle="collapse" data-bs-target="#navMain" aria-controls="navMain" aria-expanded="false" aria-label="Toggle navigation">
+        <i class="bi bi-list"></i>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navMain">
+        <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1 mt-3 mt-lg-0">
+          <li class="nav-item"><a class="nav-link" href="jobs.html"><i class="bi bi-search me-1"></i>Jobs</a></li>
+          <li class="nav-item"><a class="nav-link" href="revamp.html"><i class="bi bi-file-earmark-text me-1"></i>CV Revamp</a></li>
+          <li class="nav-item"><a class="nav-link" href="subscription.html"><i class="bi bi-shield-check me-1"></i>Subscription</a></li>
+          <li class="nav-item"><a class="nav-link" href="dashboard.html"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
+
+          <li class="nav-item ms-lg-2">
+            <a id="navAuthBtn" class="btn btn-primary w-100 mt-2 mt-lg-0" href="login.html">
+              <i class="bi bi-box-arrow-in-right me-1"></i>Login
+            </a>
+          </li>
+          <li class="nav-item ms-lg-2">
+            <button id="navLogoutBtn" class="btn btn-soft w-100 mt-2 mt-lg-0 d-none" type="button">
+              <i class="bi bi-box-arrow-right me-1"></i>Logout
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="container mt-4 pb-5">
+
+    <!-- Controls -->
+    <div class="glass p-4 p-md-4 shadow-soft">
+      <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-start align-items-lg-center">
+        <div>
+          <h1 class="h4 text-white fw-bold mb-1">Matched Jobs Results</h1>
+          <div class="muted tiny" id="metaLine">Loading results…</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-soft" id="btnRefresh"><i class="bi bi-arrow-repeat me-1"></i>Refresh</button>
+          <button class="btn btn-soft" id="btnClear"><i class="bi bi-x-circle me-1"></i>Clear</button>
+          <button class="btn btn-primary" id="btnExport"><i class="bi bi-download me-1"></i>Export CSV</button>
+        </div>
+      </div>
+
+      <div class="divider my-3"></div>
+
+      <div class="row g-3">
+        <div class="col-lg-4">
+          <label class="form-label text-white tiny mb-1">Search (title/company/keywords)</label>
+          <input id="q" class="form-control" placeholder="e.g. chemical engineer, HR officer, analyst…" />
+        </div>
+
+        <div class="col-lg-3">
+          <label class="form-label text-white tiny mb-1">Company</label>
+          <select id="companyFilter" class="form-select">
+            <option value="">All companies</option>
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label class="form-label text-white tiny mb-1">Location</label>
+          <select id="locationFilter" class="form-select">
+            <option value="">All locations</option>
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <label class="form-label text-white tiny mb-1">Min score</label>
+          <select id="minScore" class="form-select">
+            <option value="0">0%</option>
+            <option value="40">40%</option>
+            <option value="50">50%</option>
+            <option value="60" selected>60%</option>
+            <option value="70">70%</option>
+            <option value="80">80%</option>
+            <option value="90">90%</option>
+          </select>
+        </div>
+
+        <div class="col-lg-3">
+          <label class="form-label text-white tiny mb-1">Sort by</label>
+          <select id="sortBy" class="form-select">
+            <option value="score_desc" selected>Match score (high → low)</option>
+            <option value="score_asc">Match score (low → high)</option>
+            <option value="company_asc">Company (A → Z)</option>
+            <option value="location_asc">Location (A → Z)</option>
+            <option value="date_desc">Date posted (new → old)</option>
+            <option value="date_asc">Date posted (old → new)</option>
+          </select>
+        </div>
+
+        <div class="col-lg-2">
+          <label class="form-label text-white tiny mb-1">Per page</label>
+          <select id="pageSize" class="form-select">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+
+        <div class="col-lg-7 d-flex align-items-end">
+          <div class="glass p-3 w-100">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <span class="badge badge-soft rounded-pill px-3 py-2"><i class="bi bi-shield-check me-1"></i>Tips</span>
+              <span class="muted tiny">Save top jobs, then track applications from your dashboard like a pipeline.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Results Table -->
+    <div class="glass p-3 p-md-4 shadow-soft mt-3">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-2">
+        <div class="text-white tiny">
+          Showing <span id="countShowing">0</span> of <span id="countTotal">0</span> jobs
+        </div>
+        <div class="muted tiny" id="backendState">
+          Backend: <span id="backendLabel">not checked</span>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-striped table-darkish align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width:110px">Score</th>
+              <th>Job</th>
+              <th style="width:220px">Company</th>
+              <th style="width:180px">Location</th>
+              <th style="width:160px">Dates</th>
+              <th style="width:240px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rows">
+            <!-- rows injected -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty state -->
+      <div id="emptyState" class="d-none mt-3">
+        <div class="glass p-4 text-center">
+          <div class="display-6 mb-2">🧭</div>
+          <div class="text-white fw-semibold mb-1">No results found</div>
+          <div class="muted tiny mb-3">Try lowering the minimum score or clearing filters.</div>
+          <a class="btn btn-primary" href="jobs.html"><i class="bi bi-search me-1"></i>Go back to Jobs</a>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mt-3">
+        <div class="muted tiny" id="pageInfo">Page 1 of 1</div>
+        <div class="btn-group">
+          <button class="btn btn-soft" id="prevPage"><i class="bi bi-chevron-left"></i></button>
+          <button class="btn btn-soft" id="nextPage"><i class="bi bi-chevron-right"></i></button>
+        </div>
       </div>
     </div>
 
-    <p class="muted">Tip: Start with match_score ≥ 10, then refine the CV keywords or search query.</p>
+    <!-- Footer -->
+    <div class="container mt-4">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
+        <div class="muted tiny">© <span id="year"></span> Makwande Careers. All rights reserved.</div>
+        <div class="d-flex gap-3 tiny">
+          <a class="link-white" href="index.html">Home</a>
+          <a class="link-white" href="dashboard.html">Dashboard</a>
+          <a class="link-white" href="subscription.html">Subscription</a>
+        </div>
+      </div>
+    </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Score</th>
-          <th>Role</th>
-          <th>Company</th>
-          <th>Location</th>
-          <th>Source</th>
-          <th>Keywords</th>
-          <th>Link</th>
-          <th>Cover Letter</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          <td><span class="badge">{{ row.match_score }}</span></td>
-          <td>{{ row.title }}</td>
-          <td>{{ row.company }}</td>
-          <td>{{ row.location }}</td>
-          <td>{{ row.source }}</td>
-          <td class="muted">{{ row.overlap_keywords }}</td>
-          <td><a href="{{ row.url }}" target="_blank">Open</a></td>
-          <td>
-            <form action="/cover-letter" method="post">
-              <input type="hidden" name="file_id" value="{{ file_id }}"/>
-              <input type="hidden" name="row_index" value="{{ loop.index0 }}"/>
-              <button type="submit">Draft</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  </main>
+</div>
 
-    <p class="muted">
-      If "Draft" errors, it means OPENAI_API_KEY is not set in .env — the rest of the system still works.
-    </p>
-  </body>
+<!-- Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+  <div id="toast" class="toast glass text-white shadow-soft" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="toast-header" style="background: rgba(255,255,255,.06); border-bottom: 1px solid rgba(255,255,255,.10);">
+      <strong class="me-auto text-white">Makwande Careers</strong>
+      <small class="muted" id="toastTime">now</small>
+      <button type="button" class="btn-close btn-close-white ms-2 mb-1" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+    <div class="toast-body" id="toastBody">Done.</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  // -----------------------------
+  // SAFE KEYS (prevents STORAGE_KEYS undefined crash)
+  // -----------------------------
+  const STORAGE_KEYS = {
+    TOKEN: "token",
+    USER: "user",
+    API_BASE: "api_base",
+    MATCH_RESULTS: "matched_jobs",           // array of jobs
+    MATCH_RESULTS_ID: "job_match_results_id" // optional future: server-side id
+  };
+
+  // -----------------------------
+  // Helpers
+  // -----------------------------
+  const $ = (id) => document.getElementById(id);
+
+  function showToast(message) {
+    $("toastBody").textContent = message;
+    $("toastTime").textContent = "now";
+    const toast = bootstrap.Toast.getOrCreateInstance($("toast"));
+    toast.show();
+  }
+
+  function isLoggedIn() {
+    return !!localStorage.getItem(STORAGE_KEYS.TOKEN);
+  }
+
+  function getApiBase() {
+    return (
+      localStorage.getItem(STORAGE_KEYS.API_BASE) ||
+      window.API_BASE ||
+      "http://127.0.0.1:8000"
+    ).replace(/\/+$/, "");
+  }
+
+  function logout() {
+    localStorage.removeItem(STORAGE_KEYS.TOKEN);
+    localStorage.removeItem(STORAGE_KEYS.USER);
+    window.location.href = "login.html";
+  }
+
+  function syncNav() {
+    const authBtn = $("navAuthBtn");
+    const logoutBtn = $("navLogoutBtn");
+
+    if (isLoggedIn()) {
+      authBtn.classList.add("d-none");
+      logoutBtn.classList.remove("d-none");
+    } else {
+      authBtn.classList.remove("d-none");
+      logoutBtn.classList.add("d-none");
+    }
+  }
+
+  function parseScore(job) {
+    // supports score=0..1 or 0..100
+    let s = job.match_score ?? job.score ?? job.similarity ?? 0;
+    if (typeof s === "string") s = parseFloat(s) || 0;
+    if (s <= 1) s = s * 100;
+    return Math.max(0, Math.min(100, s));
+  }
+
+  function safeStr(v) {
+    return (v ?? "").toString().trim();
+  }
+
+  function normalizeJob(job) {
+    return {
+      id: safeStr(job.id || job.job_id || job._id || crypto.randomUUID()),
+      title: safeStr(job.title || job.job_title || "Untitled role"),
+      company: safeStr(job.company || job.employer || "Unknown"),
+      location: safeStr(job.location || job.city || job.country || "Unknown"),
+      url: safeStr(job.url || job.apply_url || job.link || ""),
+      description: safeStr(job.description || job.summary || ""),
+      advertised_date: safeStr(job.post_advertised_date || job.advertised_date || job.posted_date || ""),
+      closing_date: safeStr(job.closing_date || job.close_date || ""),
+      score: parseScore(job),
+      raw: job
+    };
+  }
+
+  function getSavedJobs() {
+    try { return JSON.parse(localStorage.getItem("saved_jobs") || "[]"); }
+    catch { return []; }
+  }
+
+  function setSavedJobs(arr) {
+    localStorage.setItem("saved_jobs", JSON.stringify(arr));
+  }
+
+  function getApplications() {
+    try { return JSON.parse(localStorage.getItem("applications") || "[]"); }
+    catch { return []; }
+  }
+
+  function setApplications(arr) {
+    localStorage.setItem("applications", JSON.stringify(arr));
+  }
+
+  function downloadText(filename, text) {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function csvEscape(value) {
+    const s = (value ?? "").toString();
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  function jobsToCSV(jobs) {
+    const headers = ["match_score","title","company","location","advertised_date","closing_date","url"];
+    const lines = [headers.join(",")];
+    for (const j of jobs) {
+      lines.push([
+        Math.round(j.score),
+        csvEscape(j.title),
+        csvEscape(j.company),
+        csvEscape(j.location),
+        csvEscape(j.advertised_date),
+        csvEscape(j.closing_date),
+        csvEscape(j.url)
+      ].join(","));
+    }
+    return lines.join("\n");
+  }
+
+  // -----------------------------
+  // Data state
+  // -----------------------------
+  let allJobs = [];
+  let filteredJobs = [];
+  let currentPage = 1;
+
+  // -----------------------------
+  // Backend optional fetch (future-proof)
+  // -----------------------------
+  async function tryFetchFromBackend() {
+    // Optional: if you later store a server-side results id
+    const id = localStorage.getItem(STORAGE_KEYS.MATCH_RESULTS_ID);
+    if (!id) {
+      $("backendLabel").textContent = "local results";
+      return false;
+    }
+
+    const API_BASE = getApiBase();
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+
+    try {
+      $("backendLabel").textContent = "checking…";
+      const res = await fetch(`${API_BASE}/api/match_results/${encodeURIComponent(id)}`, {
+        headers: token ? { "Authorization": `Bearer ${token}` } : {}
+      });
+
+      if (!res.ok) {
+        $("backendLabel").textContent = `offline (${res.status})`;
+        return false;
+      }
+
+      const data = await res.json();
+      // Expected: { results: [...] } or direct array
+      const arr = Array.isArray(data) ? data : (data.results || []);
+      localStorage.setItem(STORAGE_KEYS.MATCH_RESULTS, JSON.stringify(arr));
+      $("backendLabel").textContent = "connected ✅";
+      return true;
+    } catch (e) {
+      $("backendLabel").textContent = "offline ⚠️";
+      return false;
+    }
+  }
+
+  // -----------------------------
+  // Load results
+  // -----------------------------
+  function loadLocalResults() {
+    let raw = [];
+    try {
+      raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.MATCH_RESULTS) || "[]");
+    } catch {
+      raw = [];
+    }
+
+    // Also accept "top_matched_jobs" as legacy key
+    if (!raw.length) {
+      try { raw = JSON.parse(localStorage.getItem("top_matched_jobs") || "[]"); } catch { raw = []; }
+    }
+
+    allJobs = raw.map(normalizeJob);
+  }
+
+  function buildFilterOptions() {
+    const companies = new Set();
+    const locations = new Set();
+
+    for (const j of allJobs) {
+      if (j.company) companies.add(j.company);
+      if (j.location) locations.add(j.location);
+    }
+
+    const companySel = $("companyFilter");
+    const locationSel = $("locationFilter");
+
+    // reset
+    companySel.innerHTML = `<option value="">All companies</option>`;
+    locationSel.innerHTML = `<option value="">All locations</option>`;
+
+    [...companies].sort((a,b)=>a.localeCompare(b)).forEach(c=>{
+      const opt = document.createElement("option");
+      opt.value = c; opt.textContent = c;
+      companySel.appendChild(opt);
+    });
+
+    [...locations].sort((a,b)=>a.localeCompare(b)).forEach(l=>{
+      const opt = document.createElement("option");
+      opt.value = l; opt.textContent = l;
+      locationSel.appendChild(opt);
+    });
+  }
+
+  function applyFilters() {
+    const q = safeStr($("q").value).toLowerCase();
+    const company = $("companyFilter").value;
+    const location = $("locationFilter").value;
+    const minScore = parseFloat($("minScore").value || "0");
+
+    filteredJobs = allJobs.filter(j => {
+      if (j.score < minScore) return false;
+      if (company && j.company !== company) return false;
+      if (location && j.location !== location) return false;
+
+      if (q) {
+        const hay = `${j.title} ${j.company} ${j.location} ${j.description}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    sortJobs();
+    currentPage = 1;
+    render();
+  }
+
+  function sortJobs() {
+    const sort = $("sortBy").value;
+
+    const byCompany = (a,b)=>a.company.localeCompare(b.company);
+    const byLocation = (a,b)=>a.location.localeCompare(b.location);
+    const byScoreAsc = (a,b)=>a.score - b.score;
+    const byScoreDesc = (a,b)=>b.score - a.score;
+
+    const byDateValue = (j) => {
+      // best effort: advertised_date first, else closing_date
+      const d = j.advertised_date || j.closing_date || "";
+      const t = Date.parse(d);
+      return isNaN(t) ? 0 : t;
+    };
+
+    if (sort === "company_asc") filteredJobs.sort(byCompany);
+    else if (sort === "location_asc") filteredJobs.sort(byLocation);
+    else if (sort === "score_asc") filteredJobs.sort(byScoreAsc);
+    else if (sort === "date_desc") filteredJobs.sort((a,b)=>byDateValue(b)-byDateValue(a));
+    else if (sort === "date_asc") filteredJobs.sort((a,b)=>byDateValue(a)-byDateValue(b));
+    else filteredJobs.sort(byScoreDesc);
+  }
+
+  function paginated() {
+    const size = parseInt($("pageSize").value || "20", 10);
+    const total = filteredJobs.length;
+    const pages = Math.max(1, Math.ceil(total / size));
+    currentPage = Math.min(Math.max(1, currentPage), pages);
+    const start = (currentPage - 1) * size;
+    const end = start + size;
+    return { slice: filteredJobs.slice(start, end), pages, total, size };
+  }
+
+  function scoreBadge(score) {
+    const s = Math.round(score);
+    let cls = "badge text-bg-secondary";
+    if (s >= 85) cls = "badge text-bg-success";
+    else if (s >= 70) cls = "badge text-bg-primary";
+    else if (s >= 60) cls = "badge text-bg-warning";
+    else cls = "badge text-bg-secondary";
+    return `<span class="${cls} score-pill px-3 py-2">${s}%</span>`;
+  }
+
+  function render() {
+    const { slice, pages, total } = paginated();
+
+    $("countTotal").textContent = total;
+    $("countShowing").textContent = slice.length;
+    $("pageInfo").textContent = `Page ${currentPage} of ${pages}`;
+
+    const meta = allJobs.length
+      ? `Loaded ${allJobs.length} results. Filtered to ${total}.`
+      : `No results found in storage.`;
+    $("metaLine").textContent = meta;
+
+    const tbody = $("rows");
+    tbody.innerHTML = "";
+
+    if (!total) {
+      $("emptyState").classList.remove("d-none");
+    } else {
+      $("emptyState").classList.add("d-none");
+    }
+
+    for (const j of slice) {
+      const dates = `
+        <div class="tiny">
+          <div class="muted">Posted: <span class="text-white">${j.advertised_date || "-"}</span></div>
+          <div class="muted">Closes: <span class="text-white">${j.closing_date || "-"}</span></div>
+        </div>
+      `;
+
+      const title = `
+        <div class="fw-semibold text-white">${j.title}</div>
+        <div class="muted tiny">${j.description ? j.description.slice(0, 110) + (j.description.length > 110 ? "…" : "") : "No description provided."}</div>
+      `;
+
+      const urlBtn = j.url
+        ? `<a class="btn btn-sm btn-primary" href="${j.url}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Open</a>`
+        : `<button class="btn btn-sm btn-soft" disabled><i class="bi bi-link-45deg me-1"></i>No link</button>`;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${scoreBadge(j.score)}</td>
+        <td>${title}</td>
+        <td class="text-white">${j.company}</td>
+        <td class="text-white">${j.location}</td>
+        <td>${dates}</td>
+        <td>
+          <div class="d-flex flex-wrap gap-2">
+            ${urlBtn}
+            <button class="btn btn-sm btn-soft" data-action="save" data-id="${j.id}">
+              <i class="bi bi-bookmark-plus me-1"></i>Save
+            </button>
+            <button class="btn btn-sm btn-soft" data-action="track" data-id="${j.id}">
+              <i class="bi bi-check2-circle me-1"></i>Track
+            </button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    $("prevPage").disabled = currentPage <= 1;
+    $("nextPage").disabled = currentPage >= pages;
+  }
+
+  function onTableClick(e) {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+
+    const action = btn.getAttribute("data-action");
+    const id = btn.getAttribute("data-id");
+    const job = allJobs.find(x => x.id === id);
+    if (!job) return;
+
+    if (action === "save") {
+      const saved = getSavedJobs();
+      const exists = saved.some(x => (x.id || x.job_id) === job.id);
+      if (!exists) {
+        saved.unshift({
+          id: job.id,
+          title: job.title,
+          company: job.company,
+          location: job.location,
+          url: job.url,
+          score: Math.round(job.score),
+          saved_at: new Date().toISOString()
+        });
+        setSavedJobs(saved);
+        showToast("Saved ✅ (You can view saved jobs in your dashboard)");
+      } else {
+        showToast("Already saved ✅");
+      }
+    }
+
+    if (action === "track") {
+      const apps = getApplications();
+      const exists = apps.some(x => (x.job_id || x.id) === job.id);
+      if (!exists) {
+        apps.unshift({
+          job_id: job.id,
+          title: job.title,
+          company: job.company,
+          location: job.location,
+          url: job.url,
+          match_score: Math.round(job.score),
+          status: "Applied",
+          created_at: new Date().toISOString(),
+          notes: ""
+        });
+        setApplications(apps);
+        showToast("Added to tracking ✅ (Open Dashboard to manage status)");
+      } else {
+        showToast("Already in tracking ✅");
+      }
+    }
+  }
+
+  function clearResults() {
+    localStorage.removeItem(STORAGE_KEYS.MATCH_RESULTS);
+    localStorage.removeItem("top_matched_jobs");
+    allJobs = [];
+    filteredJobs = [];
+    buildFilterOptions();
+    render();
+    showToast("Results cleared.");
+  }
+
+  function exportCSV() {
+    if (!filteredJobs.length) {
+      showToast("No results to export.");
+      return;
+    }
+    const csv = jobsToCSV(filteredJobs);
+    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    downloadText(`matched_jobs_${ts}.csv`, csv);
+    showToast("CSV exported ✅");
+  }
+
+  // -----------------------------
+  // Init
+  // -----------------------------
+  document.addEventListener("DOMContentLoaded", async () => {
+    $("year").textContent = new Date().getFullYear();
+
+    syncNav();
+    $("navLogoutBtn").addEventListener("click", logout);
+
+    // Optional backend check (won't break if endpoint not exist)
+    await tryFetchFromBackend();
+
+    loadLocalResults();
+    buildFilterOptions();
+
+    // If no results, give clear guidance
+    if (!allJobs.length) {
+      $("metaLine").textContent = "No stored results found. Run matching from Jobs page first.";
+    }
+
+    filteredJobs = [...allJobs];
+    sortJobs();
+    render();
+
+    // Events
+    $("rows").addEventListener("click", onTableClick);
+
+    ["q","companyFilter","locationFilter","minScore","sortBy","pageSize"].forEach(id => {
+      $(id).addEventListener("input", applyFilters);
+      $(id).addEventListener("change", applyFilters);
+    });
+
+    $("prevPage").addEventListener("click", () => { currentPage--; render(); });
+    $("nextPage").addEventListener("click", () => { currentPage++; render(); });
+
+    $("btnExport").addEventListener("click", exportCSV);
+    $("btnClear").addEventListener("click", clearResults);
+
+    $("btnRefresh").addEventListener("click", async () => {
+      // If backend has new data, refresh it; else reload local.
+      await tryFetchFromBackend();
+      loadLocalResults();
+      buildFilterOptions();
+      applyFilters();
+      showToast("Refreshed ✅");
+    });
+
+    // Improve subtitle
+    const total = allJobs.length;
+    $("subtitle").textContent = total
+      ? `You have ${total} matched jobs. Filter, export, save and track.`
+      : `No stored match results found. Run matching from Jobs first.`;
+
+    // Auth guard (optional strict)
+    // If you want results only for logged users, uncomment:
+    // if (!isLoggedIn()) window.location.href = "login.html";
+  });
+</script>
+</body>
 </html>

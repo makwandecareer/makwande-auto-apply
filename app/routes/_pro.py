@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 
 from db import get_db, utc_now_iso
+from app.db import get_db, init_db
+
 
 # You already have auth; this function should return current user dict with email.
 # Replace import below with your real auth dependency.

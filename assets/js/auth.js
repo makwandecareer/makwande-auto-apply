@@ -1,4 +1,10 @@
 // /assets/js/auth.js
+export const STORAGE_KEYS = {
+  TOKEN: "token",
+  USER: "user",
+  API_BASE: "api_base",
+};
+
 
 function setSession(data) {
   // data should look like: { access_token, token_type, user? }
@@ -129,3 +135,15 @@ function requireAuth() {
     handleAuthError,
   };
 })();
+
+export function getApiBase() {
+  return (
+    localStorage.getItem("api_base") ||
+    window.API_BASE ||
+    "http://127.0.0.1:8000" // fallback for local dev
+  );
+}
+
+const API_BASE = getApiBase();
+fetch(`${API_BASE}/api/health`);
+
