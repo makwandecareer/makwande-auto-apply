@@ -1,6 +1,6 @@
 // service-worker.js (multi-page safe)
 
-const CACHE_NAME = "makwande-cache-v2";
+const CACHE_NAME = "makwande-cache-v3";
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -62,3 +62,24 @@ self.addEventListener("fetch", (event) => {
     caches.match(req).then((cached) => cached || fetch(req))
   );
 });
+self.addEventListener("fetch", (event) => {
+    const url = new URL(event.request.url);
+  
+    // only same-origin
+    if (url.origin !== self.location.origin) return;
+  
+    // ✅ If it’s a real file (.html/.js/.css/.png/…) do NOT rewrite, just fetch/cache
+    const hasExtension = /\.[a-zA-Z0-9]+$/.test(url.pathname);
+    if (hasExtension) {
+      event.respondWith(
+        caches.match(event.request).then((cached) => cached || fetch(event.request))
+      );
+      return;
+    }
+  
+    // ✅ Only fallback to index.html for extension-less routes (SPA behavior)
+    if (event.request.mode === "navigate") {
+      event.respondWith(fetch(event.request).catch(() => caches.match("/index.html")));
+    }
+  });
+  

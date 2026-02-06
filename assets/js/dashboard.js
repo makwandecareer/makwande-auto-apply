@@ -1,5 +1,31 @@
 // assets/js/dashboard.js
 
+(async () => {
+  // Must be logged in
+  window.Auth?.requireAuth?.();
+
+  const elApps = document.getElementById("appsList");
+  const elSaved = document.getElementById("savedList");
+
+  try {
+    const me = await API.me();  // ✅ uses JWT now
+    // Example: show user somewhere if you have an element
+    const userEl = document.getElementById("userEmail");
+    if (userEl) userEl.textContent = me.email;
+
+    // If you don't have backend endpoints for apps/saved yet,
+    // render empty states instead of "Loading..."
+    if (elApps) elApps.innerHTML = `<div class="small-muted">No applications yet.</div>`;
+    if (elSaved) elSaved.innerHTML = `<div class="small-muted">No saved jobs yet.</div>`;
+
+  } catch (e) {
+    // Token invalid or expired → force login
+    window.Auth?.clearAuth?.();
+    window.location.href = "login.html";
+  }
+})();
+
+
 (async function () {
   if (!Auth.requireAuth()) return;
 

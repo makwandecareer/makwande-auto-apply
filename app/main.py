@@ -16,6 +16,12 @@ app = FastAPI(
     description="Makwande Auto Apply API",
 )
 
+app = FastAPI()
+
+@app.head("/")
+def head_root():
+    return ""
+
 # -----------------------------
 # CORS
 # -----------------------------
