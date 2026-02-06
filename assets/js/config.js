@@ -1,36 +1,44 @@
 // /assets/js/config.js
 
-const DEFAULT_API_BASE = "https://makwande-auto-apply.onrender.com";
+(() => {
+  // 1) Default backend (Render)
+  const DEFAULT_API_BASE = "https://makwande-auto-apply.onrender.com";
 
-function getApiBase() {
-  // Priority:
-  // 1) LocalStorage override (Settings page)
-  // 2) Cloudflare Pages env injected into build (optional)
-  // 3) Default Render API
-  const saved = localStorage.getItem("API_BASE");
-  if (saved && saved.startsWith("http")) return saved.replace(/\/+$/, "");
+  // 2) Standard storage keys used across the whole frontend
+  const STORAGE_KEYS = {
+    TOKEN: "token",
+    USER: "user",
+    API_BASE: "API_BASE",      // keep your existing key name
+    JOBS_CACHE: "jobs_cache",
+    MATCHED_JOBS: "matched_jobs"
+  };
 
-  // If you inject API_BASE during build, it may be available like this:
-  // (If not, it will be undefined and we fall back)
-  const envBase = (window.__ENV__ && window.__ENV__.API_BASE) || null;
-  if (envBase && envBase.startsWith("http")) return envBase.replace(/\/+$/, "");
-
-  return DEFAULT_API_BASE;
-}
-
-
-(function () {
+  // 3) Optional meta tag override: <meta name="api-base" content="...">
   const meta = document.querySelector('meta[name="api-base"]');
   const metaBase = meta ? meta.getAttribute("content") : "";
 
-  // Priority: localStorage override > meta tag > fallback
-  const fallback = "https://makwande-auto-apply.onrender.com";
+  // 4) Optional injected env: window.__ENV__.API_BASE
+  const envBase = (window.__ENV__ && window.__ENV__.API_BASE) ? window.__ENV__.API_BASE : "";
 
-  window.getApiBase = function getApiBase() {
-    return (
-      localStorage.getItem("API_BASE") ||
-      metaBase ||
-      fallback
-    ).replace(/\/+$/, "");
-  };
+  function normalizeBase(u) {
+    return (u || "").trim().replace(/\/+$/, "");
+  }
+
+  // Priority: localStorage override -> meta tag -> window.__ENV__ -> default
+  function getApiBase() {
+    let saved = "";
+    try { saved = localStorage.getItem(STORAGE_KEYS.API_BASE) || ""; } catch {}
+    const base =
+      (saved && saved.startsWith("http") ? saved : "") ||
+      (metaBase && metaBase.startsWith("http") ? metaBase : "") ||
+      (envBase && envBase.startsWith("http") ? envBase : "") ||
+      DEFAULT_API_BASE;
+
+    return normalizeBase(base);
+  }
+
+  // Expose globally (so all scripts can use it)
+  window.APP_CONFIG = { DEFAULT_API_BASE };
+  window.STORAGE_KEYS = STORAGE_KEYS;
+  window.getApiBase = getApiBase;
 })();
