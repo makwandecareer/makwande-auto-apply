@@ -8,4 +8,5 @@ function getApiBase() {
     // Hard fallback (Render backend)
     return "https://makwande-auto-apply.onrender.com";
   }
-  
+
+  const API_BASE = "https://makwande-auto-apply.onrender.com";
